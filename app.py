@@ -1,8 +1,14 @@
+import sys
+from args import parse_args
+from pprint import pp
 
-from dataset import SpotDataset
-
-def main() -> int:
-
-    dataset_path = "./dataset/spot"
-
-    dataloader = SpotDataset.create_dataloader(root_dir=dataset_path)
+def main() -> None:
+    
+    args = parse_args()
+    
+    pp(args)
+    
+    return
+    
+if __name__ == "__main__":
+    sys.exit(main())
