@@ -1,14 +1,15 @@
-import sys
-from args import parse_args
-from pprint import pp
 
-def main() -> None:
+import bosdyn.client
+import bosdyn.client.util
+from utils.get_images import get_image, GetImageOptions
+
+def main(options):
     
-    args = parse_args()
+    sdk = bosdyn.client.create_standard_sdk('image_depth_plus_visual')
+    robot = sdk.create_robot(options.hostname)
+    bosdyn.client.util.authenticate(robot)
     
-    pp(args)
+    options: GetImageOptions = GetImageOptions()
+    frames = get_image(robot, options)   
     
     return
-    
-if __name__ == "__main__":
-    sys.exit(main())
