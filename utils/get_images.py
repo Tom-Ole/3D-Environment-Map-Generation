@@ -11,6 +11,8 @@ from bosdyn.client.robot import Robot
 from pathlib import Path
 import json
 from google.protobuf.json_format import MessageToDict
+from bosdyn.client.frame_helpers import get_a_tform_b, get_vision_tform_body
+from bosdyn.client.robot_state import RobotStateClient
 
 @dataclass
 class GetImageOptions:
@@ -36,6 +38,11 @@ ROTATION_ANGLE = {
     'right_fisheye_image': 180
 }
 
+def se3_to_matrix(se3):
+    mat = np.eye(4)
+    mat[:3, :3] = se3.rotation.to_matrix()
+    mat[:3, 3] = se3.position
+    return mat
 
 def pixel_format_type_strings():
     names = image_pb2.Image.PixelFormat.keys()
@@ -52,9 +59,12 @@ def get_image_sources(image_client):
         print('\t' + source.name)
 
 
-def get_image(robot: Robot, options: GetImageOptions) -> List[Dict]:
+def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dict]:
 
     image_client = robot.ensure_client(options.image_service)
+
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    
 
     if options.list:
         get_image_sources(image_client)
@@ -73,6 +83,7 @@ def get_image(robot: Robot, options: GetImageOptions) -> List[Dict]:
         for source in options.image_sources
     ]
     image_responses = image_client.get_image(image_request)
+    robot_state = robot_state_client.get_robot_state()
 
     save_path = Path(options.output_path)
     save_path.mkdir(parents=True, exist_ok=True)
@@ -108,12 +119,12 @@ def get_image(robot: Robot, options: GetImageOptions) -> List[Dict]:
             img = cv2.imdecode(img, -1)
 
         if options.auto_rotate and image.source.name in ROTATION_ANGLE:
-            img = ndimage.rotate(img, ROTATION_ANGLE[image.source.name]) # TODO: Maybe switch to OpenCV for better performance
-        elif options.auto_rotate and not image.source.name in ROTATION_ANGLE:
+            img = ndimage.rotate(img, ROTATION_ANGLE[image.source.name]) # TODO: switch to OpenCV for better performance
+        elif options.auto_rotate and image.source.name not in ROTATION_ANGLE: 
             print(f"No rotation defined for source: {image.source.name}") # TODO: Maybe change to an logger
 
         timestamp = image.shot.acquisition_time
-        filename = f"{image.source.name}_{timestamp.seconds}_{timestamp.nanos}"
+        filename = f"{frame_id}_{image.source.name}"
 
         image_saved_path = save_path / filename.replace("/", "")
 
@@ -133,17 +144,47 @@ def get_image(robot: Robot, options: GetImageOptions) -> List[Dict]:
                 "skew": intrinsics.skew
             }
 
+        snapshot = image.shot.transforms_snapshot
+        camera_frame = image.shot.frame_name_image_sensor
+
+        vision_T_camera = get_a_tform_b(snapshot, "vision", camera_frame)
+
+        pose_matrix = se3_to_matrix(vision_T_camera)
+
+        
+
+        vision_T_body = get_vision_tform_body(robot_state.kinematic_state.transforms_snapshot)
+        body_pose_matrix = se3_to_matrix(vision_T_body)
+        velocity = robot_state.kinematic_state.velocity_of_body_in_vision
+
+        velocity_data = {
+            "linear": {
+                "x": velocity.linear.x,
+                "y": velocity.linear.y,
+                "z": velocity.linear.z
+            },
+            "angular": {
+                "x": velocity.angular.x,
+                "y": velocity.angular.y,
+                "z": velocity.angular.z
+            }
+        }
+
         transform_snapshot = MessageToDict(image.shot.transforms_snapshot)
 
         # image.shot: https://dev.bostondynamics.com/protos/bosdyn/api/proto_reference#bosdyn-api-ImageCapture
         metadata = {
+            "frame_id": frame_id,
             "source": image.source.name,
             "rows": image.shot.image.rows,
             "cols": image.shot.image.cols,
             "timestamp": MessageToDict(timestamp),
             "intrinsics": intrinsics_data,
             "frame_name": image.shot.frame_name_image_sensor,
-            "transform_snapshot": transform_snapshot
+            #"transform_snapshot": transform_snapshot, # Quite big unnecessary
+            "camera_to_world": pose_matrix.tolist(),
+            "robot_pose": body_pose_matrix.tolist(),
+            "robot_velocity": velocity_data,
         }
 
         if options.save:
@@ -158,7 +199,6 @@ def get_image(robot: Robot, options: GetImageOptions) -> List[Dict]:
 
         results.append({
             "source": image.source.name,
-            "image": img,
             "timestamp": timestamp,
             "path": str(image_saved_path)
         })
