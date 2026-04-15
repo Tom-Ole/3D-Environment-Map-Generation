@@ -1,4 +1,4 @@
-
+# https://github.com/boston-dynamics/spot-sdk/blob/master/python/examples/get_image/get_image.py
 from dataclasses import dataclass
 from typing import List, Dict
 import cv2
@@ -16,7 +16,7 @@ from bosdyn.client.robot_state import RobotStateClient
 
 @dataclass
 class GetImageOptions:
-    output_path: str = "./"
+    output_path: str = "./output"
     image_service: str = ImageClient.default_service_name
 
     image_sources: list[str] | None = None
@@ -31,11 +31,11 @@ class GetImageOptions:
 
 
 ROTATION_ANGLE = {
-    'back_fisheye_image': 0,
-    'frontleft_fisheye_image': -78,
-    'frontright_fisheye_image': -102,
-    'left_fisheye_image': 0,
-    'right_fisheye_image': 180
+    "back_fisheye_image": 0,
+    "frontleft_fisheye_image": -78,
+    "frontright_fisheye_image": -102,
+    "left_fisheye_image": 0,
+    "right_fisheye_image": 180
 }
 
 def se3_to_matrix(se3):
@@ -48,18 +48,17 @@ def pixel_format_type_strings():
     names = image_pb2.Image.PixelFormat.keys()
     return names[1:]
 
-
 def pixel_format_string_to_enum(enum_string):
     return dict(image_pb2.Image.PixelFormat.items()).get(enum_string)
 
 def get_image_sources(image_client):
     image_sources = image_client.list_image_sources()
-    print('Image sources:')
+    print("Image sources:")
     for source in image_sources:
-        print('\t' + source.name)
+        print("\t" + source.name)
 
 
-def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dict]:
+def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_results: List[Dict]) -> None:
 
     image_client = robot.ensure_client(options.image_service)
 
@@ -88,13 +87,12 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dic
     save_path = Path(options.output_path)
     save_path.mkdir(parents=True, exist_ok=True)
 
-    results = []
 
     for image in image_responses:
         num_bytes = 1  # Assume a default of 1 byte encodings.
         if image.shot.image.pixel_format == image_pb2.Image.PIXEL_FORMAT_DEPTH_U16:
             dtype = np.uint16
-            extension = '.png'
+            extension = ".png"
         else:
             if image.shot.image.pixel_format == image_pb2.Image.PIXEL_FORMAT_RGB_U8:
                 num_bytes = 3
@@ -105,7 +103,7 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dic
             elif image.shot.image.pixel_format == image_pb2.Image.PIXEL_FORMAT_GREYSCALE_U16:
                 num_bytes = 2
             dtype = np.uint8
-            extension = '.jpg'
+            extension = ".jpg"
 
         img = np.frombuffer(image.shot.image.data, dtype=dtype)
         if image.shot.image.format == image_pb2.Image.FORMAT_RAW:
@@ -197,7 +195,7 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dic
         if options.show:
             cv2.imshow(image.source.name, img)
 
-        results.append({
+        image_results.append({
             "source": image.source.name,
             "timestamp": timestamp,
             "path": str(image_saved_path)
@@ -205,5 +203,3 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str) -> List[Dic
 
     if options.show:
         cv2.waitKey(0)
-
-    return results
