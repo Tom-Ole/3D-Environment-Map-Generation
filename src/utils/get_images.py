@@ -3,6 +3,7 @@ utils/get_images.py  -  Capture images from Spot's cameras, save to disk with me
 """
 
 # https://github.com/boston-dynamics/spot-sdk/blob/master/python/examples/get_image/get_image.py
+# https://github.com/boston-dynamics/spot-sdk/tree/master/python/examples/xbox_controller
 from dataclasses import dataclass
 import logging
 from typing import List, Dict, Optional
@@ -11,15 +12,17 @@ import numpy as np
 from requests import options
 from scipy import ndimage
 from scipy.spatial.transform import Rotation
+import time
 
 from bosdyn.api import image_pb2
 from bosdyn.client.image import ImageClient, build_image_request
-from bosdyn.client.robot import Robot
+from bosdyn.client.robot import Robot, RobotCommandClient
 from pathlib import Path
 import json
 from google.protobuf.json_format import MessageToDict
 from bosdyn.client.frame_helpers import get_a_tform_b, get_vision_tform_body
-from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.robot_state import RobotStateClient, RobotCommandBuilder
+from bosdyn.geometry import EulerZXY
 
 from src.utils.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
     
@@ -42,6 +45,11 @@ class GetImageOptions:
     show: bool = False
     save: bool = True
 
+    tilt_side_cameras: bool = False
+    side_camera_tilt_deg: float = 15.0
+    tilt_settle_time: float = 1.0 # How long to wait after issuing the tilt command before capturing.
+
+
 # Clockwise rotation angles (degrees) to make each fisheye camera upright.
 # Positive = counter-clockwise (scipy/ndimage convention)
 ROTATION_ANGLE = {
@@ -50,6 +58,12 @@ ROTATION_ANGLE = {
     "frontright_fisheye_image": -102,
     "left_fisheye_image": 0,
     "right_fisheye_image": 180
+}
+
+# Cameras that need a body roll to point away from the legs.
+_SIDE_CAMERA_ROLL: dict[str, float] = {
+    "left_fisheye_image":  -1.0,   # roll right -> left cam looks more upward
+    "right_fisheye_image": +1.0,   # roll left -> right cam looks more upward
 }
 
 def se3_to_matrix(se3):
@@ -142,6 +156,13 @@ def list_image_sources(image_client) -> None:
     for source in image_sources:
         print("\t" + source.name)
 
+def _command_body_tilt(robot: Robot, roll_deg: float, settle_time: float = 1.0) -> None:
+    command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    orientation = EulerZXY(yaw=0.0, roll=np.radians(roll_deg), pitch=0.0)
+    cmd = RobotCommandBuilder.synchro_stand_command(footprint_R_body=orientation)
+    command_client.robot_command(cmd)
+    time.sleep(settle_time)
+
 
 def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_results: List[Dict], colmap_writer: ColmapWriter) -> None:
     """
@@ -176,12 +197,51 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
         raise ValueError(f"Unknown pixel format: {options.pixel_format}")
     
 
-    image_request = [
-        build_image_request(source, pixel_format=pixel_format)
-        for source in options.image_sources
-    ]
-    image_responses = image_client.get_image(image_request)
     robot_state = robot_state_client.get_robot_state()
+
+    if options.tilt_side_cameras:
+        # Group sources so each distinct tilt is applied once.
+        # Buckets: {"left": [...], "right": [...], "neutral": [...]}
+        tilt_groups: dict[str, list[str]] = {"left": [], "right": [], "neutral": []}
+        for src in options.image_sources:
+            sign = _SIDE_CAMERA_ROLL.get(src)
+            if sign is None:
+                tilt_groups["neutral"].append(src)
+            elif sign < 0:
+                tilt_groups["left"].append(src)
+            else:
+                tilt_groups["right"].append(src)
+
+        image_responses = []
+        try:
+            for group_key, sources in tilt_groups.items():
+                if not sources:
+                    continue
+
+                if group_key == "neutral":
+                    roll = 0.0
+                else:
+                    sign = -1.0 if group_key == "left" else +1.0
+                    roll = sign * options.side_camera_tilt_deg
+
+                if roll != 0.0:
+                    logger.debug(f"Tilting body {roll:.1f}° for {group_key} cameras")
+                    _command_body_tilt(robot, roll, options.tilt_settle_time)
+
+                requests = [build_image_request(src, pixel_format=pixel_format) for src in sources]
+                image_responses.extend(image_client.get_image(requests))
+
+        finally:
+            # Always return to a level stance, even on error.
+            if any(tilt_groups[k] for k in ("left", "right")):
+                logger.debug("Restoring neutral body orientation")
+                _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time)
+    else:
+        image_request = [
+            build_image_request(source, pixel_format=pixel_format)
+            for source in options.image_sources
+        ]
+        image_responses = image_client.get_image(image_request)
 
 
     base = Path(options.output_path)
