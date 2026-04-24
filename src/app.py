@@ -5,10 +5,9 @@ app.py -  Main application to capture images from Spot and save in COLMAP format
 import time
 import bosdyn.client
 import bosdyn.client.util
-from src.utils.get_images import get_image, GetImageOptions
-from src.utils.colmap_wirter import ColmapWriter
+from utils.get_images import get_image, GetImageOptions
+from utils.colmap_wirter import ColmapWriter
 import argparse
-import keyboard
 import signal
 
 import logging
@@ -37,14 +36,23 @@ def main(args):
     image_options: GetImageOptions = GetImageOptions(
         output_path=args.output,
         image_sources=args.sources or [
-            "frontleft_fisheye_image",
-            "frontright_fisheye_image",
+            "back_depth_in_visual_frame",
+            "back_depth",
             "back_fisheye_image",
+            "frontleft_depth",
+            "frontleft_depth_in_visual_frame",
+            "frontleft_fisheye_image",
+            "frontright_depth",
+            "frontright_depth_in_visual_frame",
+            "frontright_fisheye_image",
+            "left_depth",
+            "left_depth_in_visual_frame",
             "left_fisheye_image",
+            "right_depth",
+            "right_depth_in_visual_frame",
             "right_fisheye_image",
         ],
         auto_rotate=True,
-        pixel_format="PIXEL_FORMAT_RGB_U8",
         save=True,
         show=args.show,
     )
@@ -87,6 +95,10 @@ def main(args):
 
         logger.info(f"Capture finished. Frames captured: {frame_id} | Total images {len(image_results)}")
         logger.info(f"Output directory: {Path(args.output).resolve()}")
+
+        if len(image_results) >= len(image_options.image_sources) * 2:
+            logger.info(f"Max amount of Images taken!")
+            break
     
 
 if __name__ == "__main__":

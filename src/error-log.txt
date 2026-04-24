@@ -1,0 +1,21 @@
+2026-04-24 14:10:07,556 [INFO] __main__: Connected to robot at 192.168.10.3
+2026-04-24 14:10:07,587 [INFO] root: Starting lease check-in
+2026-04-24 14:10:09,844 [INFO] __main__: Robot standing and ready.
+2026-04-24 14:10:09,844 [INFO] __main__: Uploading map from output_route …
+2026-04-24 14:10:09,983 [INFO] __main__: Graph uploaded  (3 waypoints, 2 edges)
+2026-04-24 14:10:10,464 [INFO] __main__: Uploaded 3 / 3 waypoint snapshots.
+2026-04-24 14:10:10,465 [INFO] __main__: Attempting localisation (seed waypoint: wifely-coati-uX.Km.lXwFhMknHN0VsrJg==) …
+2026-04-24 14:10:10,559 [INFO] __main__: Localised at waypoint earned-kelp-4fn0G6Z7Ir0BKf1Pvc5DZg==
+2026-04-24 14:10:10,559 [INFO] __main__: Starting route: 4 capture waypoints.
+2026-04-24 14:10:10,559 [INFO] __main__: ===== Waypoint 1 / 4  [start]  id=wifely-coati-uX.Km.lXwFhMknHN0VsrJg==
+2026-04-24 14:10:10,712 [INFO] root: Lease check-in stopped
+Traceback (most recent call last):
+  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 434, in <module>
+    run_route(args)
+  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 339, in run_route
+    reached = navigate_to_waypoint(
+              ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 207, in navigate_to_waypoint
+    graph_nav_pb2.NavigationFeedbackResponse.STATUS_ERROR,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: STATUS_ERROR

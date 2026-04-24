@@ -24,11 +24,13 @@ def matrix_to_colmap_pose(cam_to_world: np.ndarray) -> tuple[float, float, float
     ------- 
     qw, qx, qy, qz, tx, ty, tz  (all floats)
     """
+
     cam_to_world = np.linalg.inv(cam_to_world) # COLMAP uses world-to-camera convention
     R = cam_to_world[:3, :3]
     t = cam_to_world[:3, 3]
-
+    
     qx, qy, qz, qw = Rotation.from_matrix(R).as_quat()
+
     return float(qw), float(qx), float(qy), float(qz), float(t[0]), float(t[1]), float(t[2])
 
 class ColmapWriter:
@@ -47,7 +49,7 @@ class ColmapWriter:
         """Create header-only files if they do not already exist"""
 
         files = {
-            "camera.txt": (
+            "cameras.txt": (
                 "# Camera list with one line of data per camera:\n"
                 "#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n"
                 "# PINHOLE model: fx fy cx cy\n"
@@ -60,7 +62,7 @@ class ColmapWriter:
                 "#\n"
             ),
             "points3D.txt": (
-                "# 3D point list – empty; populated by COLMAP reconstruction\n"
+                "# 3D point list - empty; populated by COLMAP reconstruction\n"
                 "# POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n"
                 "#\n"
             )
@@ -106,7 +108,7 @@ class ColmapWriter:
         image_name   : path relative to the ``images/`` directory,
                        e.g. ``"frontleft_fisheye_image/00001.jpg"``
         camera_id    : ID previously returned by :meth:`register_camera`
-        cam_to_world : 4×4 camera-to-world transform
+        cam_to_world : 4x4 camera-to-world transform
  
         Returns
         -------

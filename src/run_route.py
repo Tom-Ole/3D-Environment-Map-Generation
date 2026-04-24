@@ -35,6 +35,7 @@ from bosdyn.client.graph_nav import GraphNavClient
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.robot_command import RobotCommandClient, RobotCommandBuilder, blocking_stand
 from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.api import geometry_pb2
 
 from utils.get_images import ColmapWriter, GetImageOptions, get_image
 from utils.route import RouteDefinition, CaptureWaypoint
@@ -95,6 +96,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
 
 def localise_robot(
     graph_nav_client: GraphNavClient,
+    robot_state_client,
     seed_waypoint_id: str,
     timeout_sec: float = 30.0,
 ) -> bool:
@@ -124,8 +126,11 @@ def localise_robot(
     except Exception as exc:
         logger.warning(f"Fiducial localisation failed ({exc}). Trying waypoint hint …")
         try:
+            robot_state = robot_state_client.get_robot_state()
+            ko_tform_body = robot_state.kinematic_state.transform_snapshot
             graph_nav_client.set_localization(
                 initial_guess_localization=init_guess,
+                ko_tform_body=ko_tform_body,
                 fiducial_init=graph_nav_pb2.SetLocalizationRequest.FIDUCIAL_INIT_NO_FIDUCIAL,
             )
         except Exception as exc2:
@@ -137,10 +142,7 @@ def localise_robot(
     while time.time() < deadline:
         state = graph_nav_client.get_localization_state()
         if state.localization.waypoint_id:
-            quality = graph_nav_pb2.Localization.LocalizationQuality.Name(
-                    state.localization.quality
-                ) if hasattr(state.localization, "quality") else "n/a"
-            logger.info(f"Localised at waypoint {state.localization.waypoint_id} (quality: {quality})")
+            logger.info(f"Localised at waypoint {state.localization.waypoint_id}")
             return True
         time.sleep(0.5)
 
@@ -164,13 +166,15 @@ def navigate_to_waypoint(
 
     Returns True if the robot reached the waypoint, False otherwise.
     """
+
+
     nav_params = None
     if speed_limit > 0:
         nav_params = graph_nav_pb2.TravelParams(
             max_distance=0.0,          # walk to the waypoint exactly
-            velocity_limit=bosdyn.geometry.SE2VelocityLimit(
-                max_vel=bosdyn.geometry.SE2Velocity(
-                    linear=bosdyn.geometry.Vec2(x=speed_limit, y=0),
+            velocity_limit=geometry_pb2.SE2VelocityLimit(
+                max_vel=geometry_pb2.SE2Velocity(
+                    linear=geometry_pb2.Vec2(x=speed_limit, y=0),
                     angular=0,
                 )
             ),
@@ -180,6 +184,7 @@ def navigate_to_waypoint(
         nav_to_cmd_id = graph_nav_client.navigate_to(
             waypoint_id,
             travel_params=nav_params,
+            cmd_duration=100,
         )
     except Exception as exc:
         logger.error("navigate_to(%s) call failed: %s", waypoint_id, exc)
@@ -189,7 +194,7 @@ def navigate_to_waypoint(
     deadline = time.time() + timeout_sec
     while time.time() < deadline:
         if not _running:
-            logger.info("Stop requested – aborting navigation.")
+            logger.info("Stop requested - aborting navigation.")
             return False
         feedback = graph_nav_client.navigation_feedback(nav_to_cmd_id)
         status   = feedback.status
@@ -238,7 +243,7 @@ def capture_at_waypoint(
             colmap_writer,
         )
         logger.info(
-            "  ✓ Frame %05d captured (%d cameras).",
+            " Frame %05d captured (%d cameras).",
             frame_id,
             len(options.image_sources or []),
         )
@@ -270,24 +275,36 @@ def run_route(args: argparse.Namespace) -> None:
     robot.time_sync.wait_for_sync()
     logger.info(f"Connected to robot at {args.hostname}")
 
-    capture_options = GetImageOptions(
-        output_path=str(output),
-        image_sources=args.capture_sources or [
-            "frontleft_fisheye_image",
-            "frontright_fisheye_image",
+    capture_options: GetImageOptions = GetImageOptions(
+        output_path=args.output,
+        image_sources= [
+            "back_depth_in_visual_frame",
+            "back_depth",
             "back_fisheye_image",
+            "frontleft_depth",
+            "frontleft_depth_in_visual_frame",
+            "frontleft_fisheye_image",
+            "frontright_depth",
+            "frontright_depth_in_visual_frame",
+            "frontright_fisheye_image",
+            "left_depth",
+            "left_depth_in_visual_frame",
             "left_fisheye_image",
+            "right_depth",
+            "right_depth_in_visual_frame",
             "right_fisheye_image",
         ],
         auto_rotate=True,
-        pixel_format="PIXEL_FORMAT_RGB_U8",
-        save=not args.dry_run,
+        save=True,
+        show=False,
     )
+
     sparse_dir    = output / "sparse" / "0"
     colmap_writer = ColmapWriter(sparse_dir)
     image_results: list = []
 
     lease_client = robot.ensure_client(LeaseClient.default_service_name)    # https://dev.bostondynamics.com/python/bosdyn-client/src/bosdyn/client/lease.html
+    lease_client.take()
     with LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         graph_nav_client = robot.ensure_client(GraphNavClient.default_service_name)
 
@@ -297,61 +314,62 @@ def run_route(args: argparse.Namespace) -> None:
 
         upload_map(graph_nav_client, route_dir)
 
-        if not localise_robot(graph_nav_client, route.seed_waypoint_id):
+        robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+
+        if not localise_robot(graph_nav_client, robot_state_client, route.seed_waypoint_id):
             logger.error("Could not localise robot. Check that it is near the start waypoint.")
-            return
+        else:
+            total        = len(route.capture_waypoints)
+            frame_id     = 0
+            failed_navs  = 0
+            MAX_FAILED   = 3   # abort if navigation fails this many times in a row
 
-        total        = len(route.capture_waypoints)
-        frame_id     = 0
-        failed_navs  = 0
-        MAX_FAILED   = 3   # abort if navigation fails this many times in a row
+            logger.info(f"Starting route: {total} capture waypoints.")
 
-        logger.info(f"Starting route: {total} capture waypoints.")
-
-        for idx, waypoint in enumerate(route.capture_waypoints):
-            if not _running:
-                logger.info("Stop requested - exiting route early.")
-                break
-
-            logger.info(
-                f"===== Waypoint {idx + 1} / {total}  [{waypoint.label}]  id={waypoint.waypoint_id}",
-            )
-
-            # Navigate
-            reached = navigate_to_waypoint(
-                graph_nav_client,
-                waypoint.waypoint_id,
-                speed_limit=args.nav_velocity,
-                timeout_sec=args.nav_timeout,
-            )
-
-            if not reached:
-                failed_navs += 1
-                logger.warning(
-                    f"Failed to reach waypoint {waypoint.waypoint_id} ({failed_navs}/{MAX_FAILED} consecutive failures)."
-                )
-                if failed_navs >= MAX_FAILED:
-                    logger.error("Too many navigation failures - aborting route.")
+            for idx, waypoint in enumerate(route.capture_waypoints):
+                if not _running:
+                    logger.info("Stop requested - exiting route early.")
                     break
-                continue   # skip capture at this waypoint, try the next
 
-            failed_navs = 0   # reset on success
+                logger.info(
+                    f"===== Waypoint {idx + 1} / {total}  [{waypoint.label}]  id={waypoint.waypoint_id}",
+                )
 
-            # Brief settle pause for reduce/no motion blur 
-            time.sleep(args.settle_time)
+                # Navigate
+                reached = navigate_to_waypoint(
+                    graph_nav_client,
+                    waypoint.waypoint_id,
+                    speed_limit=args.nav_velocity,
+                    timeout_sec=args.nav_timeout,
+                )
 
-            # Capture
-            frame_id += 1
-            capture_at_waypoint(
-                robot, waypoint, frame_id,
-                capture_options, image_results, colmap_writer,
-                dry_run=args.dry_run,
-            )
+                if not reached:
+                    failed_navs += 1
+                    logger.warning(
+                        f"Failed to reach waypoint {waypoint.waypoint_id} ({failed_navs}/{MAX_FAILED} consecutive failures)."
+                    )
+                    if failed_navs >= MAX_FAILED:
+                        logger.error("Too many navigation failures - aborting route.")
+                        break
+                    continue   # skip capture at this waypoint, try the next
+
+                failed_navs = 0   # reset on success
+
+                # Brief settle pause for reduce/no motion blur 
+                time.sleep(args.settle_time)
+
+                # Capture
+                frame_id += 1
+                capture_at_waypoint(
+                    robot, waypoint, frame_id,
+                    capture_options, image_results, colmap_writer,
+                    dry_run=args.dry_run,
+                )
+
 
         # ------------- Done with the route ----------------
         logger.info(
             f"\nRoute complete. Frames captured: {frame_id}  |  Images saved: {len(image_results)}",
-            frame_id, len(image_results),
         )
         logger.info(f"Output: {output.resolve()}")
 

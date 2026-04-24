@@ -42,6 +42,8 @@ from bosdyn.client.graph_nav import GraphNavClient
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.recording import GraphNavRecordingServiceClient
 from bosdyn.client.robot_command import RobotCommandClient, blocking_stand
+from scipy.spatial.transform import Rotation
+
 
 from utils.route import RouteDefinition
 
@@ -91,7 +93,8 @@ def get_robot_se2(graph_nav_client: GraphNavClient) -> Optional[tuple[float, flo
         return None
     x   = loc.waypoint_tform_body.position.x
     y   = loc.waypoint_tform_body.position.y
-    yaw = loc.waypoint_tform_body.rotation.to_yaw()
+    q = loc.waypoint_tform_body.rotation
+    yaw = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")[2],
     return x, y, yaw
 
 
@@ -130,11 +133,17 @@ class RouteRecorder:
 
     def start_recording(self) -> None:
         """Clear any existing map on the robot and begin recording."""
+
+        try:
+            self.recording_client.stop_recording()
+        except Exception:
+            pass  # not recording
+
         # Clear the existing map so we start fresh
         self.graph_nav_client.clear_graph()
 
         env = recording_pb2.RecordingEnvironment()
-        env.name_prefix = "spot_route"
+        env.name_prefix = "spot_route_tom"
         self.recording_client.start_recording(recording_environment=env)
         logger.info("GraphNav recording started.")
 
@@ -214,7 +223,7 @@ def _prompt_mark(recorder: RouteRecorder) -> None:
     notes = input("  Notes (optional)           : ").strip()
     wid   = recorder.mark_capture_waypoint(label=label, notes=notes)
     if wid:
-        print(f"   Waypoint marked: {wid}")
+        print(f"   Waypoint marked: {wid} \n")
     else:
         print("   Could not mark waypoint (robot not localised?).")
 
@@ -232,87 +241,59 @@ def recording_loop(recorder: RouteRecorder) -> None:
     print("-" * 60 + "\n")
 
 
-    input_queue: queue.Queue[str] = queue.Queue()
-
-    def _stdin_reader():
-        while True:
-            try:
-                line = sys.stdin
-            except (EOFError, OSError):
-                break
-            
-            input_queue.put(line.strip().lower())
-
-            if line.strip().lower() == "q":
-                break
-        
-    reader_thread = threading.Thread(target=_stdin_reader, daemon=True)
-    reader_thread.start()
-
     while True:
         recorder.check_auto_capture()
+        line = input("Command: ").strip().lower()
 
-        try:
-            line = input_queue.get_nowait()
-        except queue.Empty:
-            time.sleep(0.2)
-            continue
-        
         if line == "":
             _prompt_mark(recorder)
         elif line == "q":
-            logger.info("\nStopping recording …")
+            logger.info("Stopping recording …")
             break
         elif line == "l":
             if not recorder.route.capture_waypoints:
-                logger.info("  (no waypoints marked yet)")
+                print("  (no waypoints marked yet)")
             else:
                 for i, wp in enumerate(recorder.route.capture_waypoints):
                     print(f"  [{i:3d}] {wp.label:<20s}  {wp.waypoint_id}")
         else:
-            logger.warning("  Unknown command. ENTER=mark  q=quit  l=list")
+            print("  Unknown command. ENTER=mark  q=quit  l=list")
+ 
+        
 
-
-
-def main(args: argparse.Namespace) -> None:
+def record_run(args: argparse.Namespace) -> None:
     route_dir = Path(args.route_dir)
 
     sdk   = bosdyn.client.create_standard_sdk("spot_route_recorder")
     robot = sdk.create_robot(args.hostname)
     bosdyn.client.util.authenticate(robot)
-    robot.time_sync.wait_for_sync()
+    # robot.time_sync.wait_for_sync()
     logger.info(f"Connected to robot at {args.hostname}")
 
 
-    lease_client = robot.ensure_client(LeaseClient.default_service_name)    # https://dev.bostondynamics.com/python/bosdyn-client/src/bosdyn/client/lease.html
-    with LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
-        robot.power_on(timeout_sec=20)
-        blocking_stand(robot.ensure_client(RobotCommandClient.default_service_name))
-        logger.info("Robot standing.")
+    recorder = RouteRecorder(
+        robot=robot,
+        route_dir=route_dir,
+        description=args.description,
+        auto_capture_distance=args.auto_capture_distance,
+    )
 
-        recorder = RouteRecorder(
-            robot=robot,
-            route_dir=route_dir,
-            description=args.description,
-            auto_capture_distance=args.auto_capture_distance,
-        )
+    recorder.start_recording()
 
-        recorder.start_recording()
+    # Give the robot a moment to create the first waypoint
+    time.sleep(1.5)
 
-        # Give the robot a moment to create the first waypoint
-        time.sleep(1.5)
+    # Mark the starting position automatically as the first waypoint
+    logger.info("Marking starting position as first capture waypoint …")
+    recorder.mark_capture_waypoint(label="start")
 
-        # Mark the starting position automatically as the first waypoint
-        logger.info("Marking starting position as first capture waypoint …")
-        recorder.mark_capture_waypoint(label="start")
+    try:
+        recording_loop(recorder)
+    finally:
+        recorder.stop_recording()
+        recorder.save()
 
-        try:
-            recording_loop(recorder)
-        finally:
-            recorder.stop_recording()
-            recorder.save()
-
-        logger.info(f"Done. You can now run:  python run_route.py --route-dir {route_dir} --hostname {args.hostname}")
+    logger.info(f"Done. You can now run:  python run_route.py --route-dir {route_dir} --hostname {args.hostname}")
 
 
 if __name__ == "__main__":
@@ -342,4 +323,4 @@ if __name__ == "__main__":
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    main(args)
+    record_run(args)

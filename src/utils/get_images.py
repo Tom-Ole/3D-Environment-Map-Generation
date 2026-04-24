@@ -9,7 +9,6 @@ import logging
 from typing import List, Dict, Optional
 import cv2
 import numpy as np
-from requests import options
 from scipy import ndimage
 from scipy.spatial.transform import Rotation
 import time
@@ -21,12 +20,13 @@ from pathlib import Path
 import json
 from google.protobuf.json_format import MessageToDict
 from bosdyn.client.frame_helpers import get_a_tform_b, get_vision_tform_body
-from bosdyn.client.robot_state import RobotStateClient, RobotCommandBuilder
+from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.robot_command import RobotCommandBuilder
 from bosdyn.geometry import EulerZXY
+from utils.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
 
-from src.utils.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
-    
 logger = logging.getLogger(__name__)
+
 @dataclass
 class GetImageOptions:
     output_path: str = "./output"
@@ -40,12 +40,10 @@ class GetImageOptions:
 
     auto_rotate: bool = True
 
-    pixel_format: str = "PIXEL_FORMAT_RGB_U8"
-
     show: bool = False
     save: bool = True
 
-    tilt_side_cameras: bool = False
+    tilt_side_cameras: bool = False # TODO: take Lease
     side_camera_tilt_deg: float = 15.0
     tilt_settle_time: float = 1.0 # How long to wait after issuing the tilt command before capturing.
 
@@ -54,8 +52,8 @@ class GetImageOptions:
 # Positive = counter-clockwise (scipy/ndimage convention)
 ROTATION_ANGLE = {
     "back_fisheye_image": 0,
-    "frontleft_fisheye_image": -78,
-    "frontright_fisheye_image": -102,
+    "frontleft_fisheye_image": -90, #-78,
+    "frontright_fisheye_image": -90, #-102,
     "left_fisheye_image": 0,
     "right_fisheye_image": 180
 }
@@ -70,27 +68,8 @@ def se3_to_matrix(se3):
     """Convert a Spot SE3Pose proto to a 4x4 matrix"""
     mat = np.eye(4)
     mat[:3, :3] = se3.rotation.to_matrix()
-    mat[:3, 3] = se3.position
+    mat[:3, 3] = [se3.position.x, se3.position.y, se3.position.z]
     return mat
-
-# def matrix_to_colmap_pose(cam_to_world: np.ndarray) -> tuple[float, float, float, float, float, float, float]:
-#     """
-#     Convert a 4x4 camera-to-world matrix to the COLMAP extrinsic convention.
- 
-#     COLMAP stores the *world-to-camera* transform as
-#         (qw, qx, qy, qz, tx, ty, tz)
-#     where  X_cam = R @ X_world + t.
-    
-#     Returns
-#     ------- 
-#     qw, qx, qy, qz, tx, ty, tz  (all floats)
-#     """
-#     cam_to_world = np.linalg.inv(cam_to_world) # COLMAP uses world-to-camera convention
-#     R = cam_to_world[:3, :3]
-#     t = cam_to_world[:3, 3]
-
-#     qx, qy, qz, qw = Rotation.from_matrix(R).as_quat()
-#     return float(qw), float(qx), float(qy), float(qz), float(t[0]), float(t[1]), float(t[2])
 
 def adjust_intrinsics_for_rotation(
     intrinsics: dict,
@@ -123,7 +102,7 @@ def adjust_intrinsics_for_rotation(
     px_rot = cos_a * px - sin_a * py
     py_rot = sin_a * px + cos_a * py
  
-    # ndimage.rotate(reshape=True) exputes new canvas size
+    # ndimage.rotate(reshape=True) computes new canvas size
     new_cols = int(np.round(abs(original_cols * cos_a) + abs(original_rows * sin_a)))
     new_rows = int(np.round(abs(original_cols * sin_a) + abs(original_rows * cos_a)))
  
@@ -179,23 +158,14 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
     """
 
     image_client = robot.ensure_client(options.image_service)
-
     robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
-    
 
     if options.list_sources:
         list_image_sources(image_client)
         return
-    
+
     if not options.image_sources:
         raise ValueError("No image_sources specified in GetImageOptions")
-
-    # Capture and save images to disk
-    pixel_format = pixel_format_string_to_enum(options.pixel_format)
-
-    if pixel_format is None:
-        raise ValueError(f"Unknown pixel format: {options.pixel_format}")
-    
 
     robot_state = robot_state_client.get_robot_state()
 
@@ -228,7 +198,7 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
                     logger.debug(f"Tilting body {roll:.1f}° for {group_key} cameras")
                     _command_body_tilt(robot, roll, options.tilt_settle_time)
 
-                requests = [build_image_request(src, pixel_format=pixel_format) for src in sources]
+                requests = [build_image_request(src) for src in sources]
                 image_responses.extend(image_client.get_image(requests))
 
         finally:
@@ -238,7 +208,7 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
                 _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time)
     else:
         image_request = [
-            build_image_request(source, pixel_format=pixel_format)
+            build_image_request(source)
             for source in options.image_sources
         ]
         image_responses = image_client.get_image(image_request)
@@ -249,7 +219,6 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
     metadata_dir = base / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
-
     for image in image_responses:
 
         source_name = image.source.name
@@ -259,13 +228,12 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
         extension   = ".png" if is_depth else ".jpg"
         num_bytes   = 1 if is_depth else pixel_format_num_bytes(image.shot.image.pixel_format)
 
-
         raw = np.frombuffer(image.shot.image.data, dtype=dtype)
 
         if image.shot.image.format == image_pb2.Image.FORMAT_RAW:
             try:
                 # here we reshape the raw bytes into an image array because OpenCV's imdecode doesn't support some of the raw formats (e.g. depth)
-                img = raw.reshape((image.shot.image.rows, image.shot.image.cols, num_bytes)) 
+                img = raw.reshape((image.shot.image.rows, image.shot.image.cols, num_bytes))
             except ValueError:
                 img = cv2.imdecode(raw, -1) # -1 = unchanged
         else:
@@ -279,10 +247,10 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
             if source_name in ROTATION_ANGLE:
                 rotation_applied = ROTATION_ANGLE[source_name]
                 if rotation_applied != 0:
-                    img = ndimage.rotate(img, rotation_applied) 
+                    img = ndimage.rotate(img, rotation_applied)
             else:
                 logger.warning(f"No rotation defined for source {source_name}")
-        
+
         intrinsics_data: Optional[Dict] = None
         if image.source.HasField("pinhole"):
             intr = image.source.pinhole.intrinsics
@@ -291,19 +259,20 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
                 "fy"    : intr.focal_length.y,
                 "cx"    : intr.principal_point.x,
                 "cy"    : intr.principal_point.y,
-                "skew"  : intr.skew,
+                "skew"  : intr.skew.x,
+                "skew_y"  : intr.skew.y,
             }
             intrinsics_data = adjust_intrinsics_for_rotation(
                 raw_intrinsics, rotation_applied, original_rows, original_cols
             )
-        
-        snapshot = image.shot.transforms_snapshot
+
+        snapshot     = image.shot.transforms_snapshot
         camera_frame = image.shot.frame_name_image_sensor
 
-        vision_T_camera = get_a_tform_b(snapshot, "vision", camera_frame)
-        cam_to_world    = se3_to_matrix(vision_T_camera)
+        vision_T_camera  = get_a_tform_b(snapshot, "vision", camera_frame)
+        cam_to_world     = se3_to_matrix(vision_T_camera)
 
-        vision_T_body   = get_vision_tform_body(
+        vision_T_body    = get_vision_tform_body(
             robot_state.kinematic_state.transforms_snapshot
         )
         body_pose_matrix = se3_to_matrix(vision_T_body)
@@ -314,10 +283,9 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
             "angular": {"x": vel.angular.x, "y": vel.angular.y, "z": vel.angular.z},
         }
 
-
         cam_images_dir = images_dir / source_name
         cam_images_dir.mkdir(parents=True, exist_ok=True)
- 
+
         # e.g. "frontleft_fisheye_image/00042.jpg"
         image_filename  = f"{frame_id}{extension}"
         image_rel_path  = f"{source_name}/{image_filename}"
@@ -335,19 +303,19 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
             cv2.imwrite(str(image_save_path), img)
 
         metadata = {
-            "frame_id":        frame_id,
-            "source":          source_name,
-            "rows":            original_rows,
-            "cols":            original_cols,
-            "rows_after_rot":  img.shape[0],
-            "cols_after_rot":  img.shape[1],
+            "frame_id":             frame_id,
+            "source":               source_name,
+            "rows":                 original_rows,
+            "cols":                 original_cols,
+            "rows_after_rot":       img.shape[0],
+            "cols_after_rot":       img.shape[1],
             "rotation_applied_deg": rotation_applied,
-            "timestamp":       MessageToDict(image.shot.acquisition_time),
-            "intrinsics":      intrinsics_data,
-            "frame_name":      image.shot.frame_name_image_sensor,
-            "camera_to_world": cam_to_world.tolist(),
-            "robot_pose":      body_pose_matrix.tolist(),
-            "robot_velocity":  velocity_data,
+            "timestamp":            MessageToDict(image.shot.acquisition_time),
+            "intrinsics":           intrinsics_data,
+            "frame_name":           image.shot.frame_name_image_sensor,
+            "camera_to_world":      cam_to_world.tolist(),
+            "robot_pose":           body_pose_matrix.tolist(),
+            "robot_velocity":       velocity_data,
             # Store the COLMAP-convention pose as well for convenience
             "colmap_pose": dict(zip(
                 ["qw", "qx", "qy", "qz", "tx", "ty", "tz"],
@@ -361,7 +329,7 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
         if options.show:
             cv2.imshow(source_name, img)
- 
+
         image_results.append({
             "source":    source_name,
             "timestamp": image.shot.acquisition_time,
@@ -369,5 +337,4 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
         })
 
     if options.show:
-            cv2.waitKey(0) # blocks (1 for non-blocking)
-
+        cv2.waitKey(0) # blocks (1 for non-blocking)
