@@ -220,7 +220,7 @@ class RouteRecorder:
 def _prompt_mark(recorder: RouteRecorder) -> None:
     """Ask the user for a label and mark a capture waypoint."""
     label = input("  Label (leave blank for auto): ").strip()
-    notes = input("  Notes (optional)           : ").strip()
+    notes = "" #input("  Notes (optional)           : ").strip()
     wid   = recorder.mark_capture_waypoint(label=label, notes=notes)
     if wid:
         print(f"   Waypoint marked: {wid} \n")

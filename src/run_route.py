@@ -64,7 +64,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
     Upload the graph topology and all waypoint snapshots from *route_dir* to
     the robot.  Returns the deserialized Graph proto.
     """
-    logger.info("Uploading map from %s …", route_dir)
+    logger.info("Uploading map from %s ...", route_dir)
 
     graph_path = route_dir / "graph"
     with open(graph_path, "rb") as fh:
@@ -110,7 +110,7 @@ def localise_robot(
 
     Returns True on success, False on failure.
     """
-    logger.info(f"Attempting localisation (seed waypoint: {seed_waypoint_id}) …",)
+    logger.info(f"Attempting localisation (seed waypoint: {seed_waypoint_id}) ...",)
 
     init_guess = nav_pb2.Localization()
     init_guess.waypoint_id = seed_waypoint_id
@@ -124,7 +124,7 @@ def localise_robot(
             fiducial_init=graph_nav_pb2.SetLocalizationRequest.FIDUCIAL_INIT_NEAREST,
         )
     except Exception as exc:
-        logger.warning(f"Fiducial localisation failed ({exc}). Trying waypoint hint …")
+        logger.warning(f"Fiducial localisation failed ({exc}). Trying waypoint hint...")
         try:
             robot_state = robot_state_client.get_robot_state()
             ko_tform_body = robot_state.kinematic_state.transform_snapshot
@@ -190,6 +190,12 @@ def navigate_to_waypoint(
         logger.error("navigate_to(%s) call failed: %s", waypoint_id, exc)
         return False
 
+    STILL_NAVIGATING = {
+    graph_nav_pb2.NavigationFeedbackResponse.STATUS_FOLLOWING_ROUTE,
+    graph_nav_pb2.NavigationFeedbackResponse.STATUS_PREPARING_ROBOT,
+    }
+
+
     # Poll until the command finishes
     deadline = time.time() + timeout_sec
     while time.time() < deadline:
@@ -202,11 +208,7 @@ def navigate_to_waypoint(
         if status == graph_nav_pb2.NavigationFeedbackResponse.STATUS_REACHED_GOAL:
             return True
 
-        if status in (
-            graph_nav_pb2.NavigationFeedbackResponse.STATUS_LOST,
-            graph_nav_pb2.NavigationFeedbackResponse.STATUS_ERROR,
-            graph_nav_pb2.NavigationFeedbackResponse.STATUS_STUCK,
-        ):
+        if status not in STILL_NAVIGATING:
             status_name = graph_nav_pb2.NavigationFeedbackResponse.Status.Name(status)
             logger.warning("Navigation to %s ended with status: %s", waypoint_id, status_name)
             return False
@@ -233,7 +235,7 @@ def capture_at_waypoint(
         logger.info(f"[DRY RUN] Skipping capture at {waypoint.waypoint_id} ({waypoint.label})")
         return
 
-    logger.info(f"Capturing at waypoint {waypoint.waypoint_id} ({waypoint.label}) …")
+    logger.info(f"Capturing at waypoint {waypoint.waypoint_id} ({waypoint.label}) ...")
     try:
         get_image(
             robot,
@@ -375,7 +377,7 @@ def run_route(args: argparse.Namespace) -> None:
 
         # Return the robot to the starting waypoint if requested
         if args.return_to_start and _running:
-            logger.info(f"Navigating back to start waypoint ({route.seed_waypoint_id}) …")
+            logger.info(f"Navigating back to start waypoint ({route.seed_waypoint_id}) ...")
             navigate_to_waypoint(
                 graph_nav_client,
                 route.seed_waypoint_id,
