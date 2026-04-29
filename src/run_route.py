@@ -1,24 +1,3 @@
-"""
-run_route.py - Upload a pre-recorded GraphNav map, navigate Spot autonomously
-along the route, and capture images at every registered capture waypoint.
-
-Prerequisites
----------------
-1.  A route recorded with record_route.py (route_dir/route.json + map files).
-2.  The robot must be placed at (or very near) the *seed waypoint* - the first
-    position marked during recording.
-    A recocnizable landmark (e.g. a fiducial) near the seed waypoint can help with localisation.
-
-Usage
--------
-python run_route.py --hostname 192.168.80.3 --route-dir ./routes/lab_loop \
-    [--output ./output/lab_loop_001] \
-    [--capture-rate 2.0]            # Hz during the brief stop at each waypoint
-    [--capture-sources frontleft_fisheye_image frontright_fisheye_image]
-    [--nav-velocity 0.8]            # m/s during transit (0 = SDK default)
-    [--dry-run]                     # navigate but do not save images
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -26,7 +5,6 @@ import logging
 import signal
 import time
 from pathlib import Path
-from typing import Optional
 
 import bosdyn.client
 import bosdyn.client.util
@@ -64,7 +42,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
     Upload the graph topology and all waypoint snapshots from *route_dir* to
     the robot.  Returns the deserialized Graph proto.
     """
-    logger.info("Uploading map from %s ...", route_dir)
+    logger.info(f"Uploading map from {route_dir} ...")
 
     graph_path = route_dir / "graph"
     with open(graph_path, "rb") as fh:
@@ -72,8 +50,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
         graph.ParseFromString(fh.read())
 
     graph_nav_client.upload_graph(graph=graph)
-    logger.info("Graph uploaded  (%d waypoints, %d edges)",
-                len(graph.waypoints), len(graph.edges))
+    logger.info(f"Graph uploaded  ({len(graph.waypoints)} waypoints, {len(graph.edges)} edges)")
 
 
     snapshots_dir = route_dir / "waypoint_snapshots"
@@ -81,7 +58,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
     for waypoint in graph.waypoints:
         snap_path = snapshots_dir / waypoint.snapshot_id
         if not snap_path.exists():
-            logger.warning("Snapshot missing: %s", snap_path)
+            logger.warning(f"Snapshot missing: {snap_path}")
             continue
         with open(snap_path, "rb") as fh:
             snapshot = map_pb2.WaypointSnapshot()
@@ -89,7 +66,7 @@ def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.
         graph_nav_client.upload_waypoint_snapshot(snapshot)
         uploaded += 1
 
-    logger.info("Uploaded %d / %d waypoint snapshots.", uploaded, len(graph.waypoints))
+    logger.info(f"Uploaded {uploaded} / {len(graph.waypoints)} waypoint snapshots.")
     return graph
 
 
@@ -119,8 +96,8 @@ def localise_robot(
         graph_nav_client.set_localization(
             initial_guess_localization=init_guess,
             ko_tform_body=None,
-            max_distance=3.0,
-            max_yaw=1.57,   # ±90°
+            max_distance=1.0,
+            max_yaw=1.57,
             fiducial_init=graph_nav_pb2.SetLocalizationRequest.FIDUCIAL_INIT_NEAREST,
         )
     except Exception as exc:
@@ -187,12 +164,12 @@ def navigate_to_waypoint(
             cmd_duration=100,
         )
     except Exception as exc:
-        logger.error("navigate_to(%s) call failed: %s", waypoint_id, exc)
+        logger.error(f"navigate_to({waypoint_id}) call failed: {exc}")
         return False
 
     STILL_NAVIGATING = {
     graph_nav_pb2.NavigationFeedbackResponse.STATUS_FOLLOWING_ROUTE,
-    graph_nav_pb2.NavigationFeedbackResponse.STATUS_PREPARING_ROBOT,
+    #graph_nav_pb2.NavigationFeedbackResponse.STATUS_PREPARING_ROBOT,
     }
 
 
@@ -210,12 +187,12 @@ def navigate_to_waypoint(
 
         if status not in STILL_NAVIGATING:
             status_name = graph_nav_pb2.NavigationFeedbackResponse.Status.Name(status)
-            logger.warning("Navigation to %s ended with status: %s", waypoint_id, status_name)
+            logger.warning(f"Navigation to {waypoint_id} ended with status: {status_name}")
             return False
 
         time.sleep(0.25)
 
-    logger.warning("Navigation to %s timed out after %.0f s.", waypoint_id, timeout_sec)
+    logger.warning(f"Navigation to {waypoint_id} timed out after {timeout_sec:.01}s.", waypoint_id, timeout_sec)
     return False
 
 
@@ -229,6 +206,7 @@ def capture_at_waypoint(
     image_results: list,
     colmap_writer: ColmapWriter,
     dry_run: bool,
+    lease = None
 ) -> None:
     """Stop and capture images at the current waypoint."""
     if dry_run:
@@ -243,12 +221,9 @@ def capture_at_waypoint(
             f"{frame_id:05d}",
             image_results,
             colmap_writer,
+            lease=lease
         )
-        logger.info(
-            " Frame %05d captured (%d cameras).",
-            frame_id,
-            len(options.image_sources or []),
-        )
+        logger.info(f" Frame {frame_id:05d} captured ({len(options.image_sources or [])} cameras).")
     except Exception as exc:
         logger.warning(f"Capture failed at waypoint {waypoint.waypoint_id}: {exc}")
 
@@ -280,20 +255,20 @@ def run_route(args: argparse.Namespace) -> None:
     capture_options: GetImageOptions = GetImageOptions(
         output_path=args.output,
         image_sources= [
-            "back_depth_in_visual_frame",
-            "back_depth",
+            #"back_depth_in_visual_frame",
+            #"back_depth",
             "back_fisheye_image",
-            "frontleft_depth",
-            "frontleft_depth_in_visual_frame",
+            #"frontleft_depth",
+            #"frontleft_depth_in_visual_frame",
             "frontleft_fisheye_image",
-            "frontright_depth",
-            "frontright_depth_in_visual_frame",
+            #"frontright_depth",
+            #"frontright_depth_in_visual_frame",
             "frontright_fisheye_image",
-            "left_depth",
-            "left_depth_in_visual_frame",
+            #"left_depth",
+            #"left_depth_in_visual_frame",
             "left_fisheye_image",
-            "right_depth",
-            "right_depth_in_visual_frame",
+            #"right_depth",
+            #"right_depth_in_visual_frame",
             "right_fisheye_image",
         ],
         auto_rotate=True,
@@ -310,7 +285,6 @@ def run_route(args: argparse.Namespace) -> None:
     with LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
         graph_nav_client = robot.ensure_client(GraphNavClient.default_service_name)
 
-        robot.power_on(timeout_sec=20)
         blocking_stand(robot.ensure_client(RobotCommandClient.default_service_name))
         logger.info("Robot standing and ready.")
 
@@ -357,7 +331,7 @@ def run_route(args: argparse.Namespace) -> None:
 
                 failed_navs = 0   # reset on success
 
-                # Brief settle pause for reduce/no motion blur 
+                # Brief settle pause for reduce/no motion blur
                 time.sleep(args.settle_time)
 
                 # Capture
@@ -366,6 +340,7 @@ def run_route(args: argparse.Namespace) -> None:
                     robot, waypoint, frame_id,
                     capture_options, image_results, colmap_writer,
                     dry_run=args.dry_run,
+                    lease=lease_client
                 )
 
 

@@ -1,7 +1,3 @@
-"""
-utils/get_images.py  -  Capture images from Spot's cameras, save to disk with metadata, and record in COLMAP format.
-"""
-
 # https://github.com/boston-dynamics/spot-sdk/blob/master/python/examples/get_image/get_image.py
 # https://github.com/boston-dynamics/spot-sdk/tree/master/python/examples/xbox_controller
 from dataclasses import dataclass
@@ -23,6 +19,8 @@ from bosdyn.client.frame_helpers import get_a_tform_b, get_vision_tform_body
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.robot_command import RobotCommandBuilder
 from bosdyn.geometry import EulerZXY
+from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
+
 from utils.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
 
 logger = logging.getLogger(__name__)
@@ -43,17 +41,15 @@ class GetImageOptions:
     show: bool = False
     save: bool = True
 
-    tilt_side_cameras: bool = False # TODO: take Lease
+    tilt_side_cameras: bool = False
     side_camera_tilt_deg: float = 15.0
     tilt_settle_time: float = 1.0 # How long to wait after issuing the tilt command before capturing.
 
 
-# Clockwise rotation angles (degrees) to make each fisheye camera upright.
-# Positive = counter-clockwise (scipy/ndimage convention)
 ROTATION_ANGLE = {
     "back_fisheye_image": 0,
-    "frontleft_fisheye_image": -90, #-78,
-    "frontright_fisheye_image": -90, #-102,
+    "frontleft_fisheye_image": -90, 
+    "frontright_fisheye_image": -90,
     "left_fisheye_image": 0,
     "right_fisheye_image": 180
 }
@@ -135,15 +131,26 @@ def list_image_sources(image_client) -> None:
     for source in image_sources:
         print("\t" + source.name)
 
-def _command_body_tilt(robot: Robot, roll_deg: float, settle_time: float = 1.0) -> None:
+def _command_body_tilt(robot: Robot, roll_deg: float, settle_time: float = 1.0, lease = None) -> None:
+
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
+    
+    # Clear any lingering behavior faults first
+    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+    robot_state = robot_state_client.get_robot_state()
+    faults = robot_state.behavior_fault_state.faults
+    if faults:
+        logger.warning(f"Clearing {len(faults)} behavior fault(s) before tilt command")
+        command_client.clear_behavior_fault(faults[0].behavior_fault_id)
+
     orientation = EulerZXY(yaw=0.0, roll=np.radians(roll_deg), pitch=0.0)
     cmd = RobotCommandBuilder.synchro_stand_command(footprint_R_body=orientation)
     command_client.robot_command(cmd)
     time.sleep(settle_time)
 
 
-def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_results: List[Dict], colmap_writer: ColmapWriter) -> None:
+
+def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_results: List[Dict], colmap_writer: ColmapWriter, lease = None) -> None:
     """
     Capture one frame from all configured cameras, save images + JSON metadata,
     and record the frame in the COLMAP sparse model files.
@@ -196,19 +203,19 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
                 if roll != 0.0:
                     logger.debug(f"Tilting body {roll:.1f}° for {group_key} cameras")
-                    _command_body_tilt(robot, roll, options.tilt_settle_time)
+                    _command_body_tilt(robot, roll, options.tilt_settle_time, lease=lease)
 
-                requests = [build_image_request(src) for src in sources]
+                requests = [build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8) for src in sources]
                 image_responses.extend(image_client.get_image(requests))
 
         finally:
             # Always return to a level stance, even on error.
             if any(tilt_groups[k] for k in ("left", "right")):
                 logger.debug("Restoring neutral body orientation")
-                _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time)
+                _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time, lease=lease)
     else:
         image_request = [
-            build_image_request(source)
+            build_image_request(source, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
             for source in options.image_sources
         ]
         image_responses = image_client.get_image(image_request)
@@ -232,6 +239,8 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
         if image.shot.image.format == image_pb2.Image.FORMAT_RAW:
             try:
+                print("YEEESSSSSSSSSSSSSSSs")
+                logger.info("YEEEEEEEEEEEESSSSSSSSs")
                 # here we reshape the raw bytes into an image array because OpenCV's imdecode doesn't support some of the raw formats (e.g. depth)
                 img = raw.reshape((image.shot.image.rows, image.shot.image.cols, num_bytes))
             except ValueError:

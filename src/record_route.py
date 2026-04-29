@@ -1,29 +1,3 @@
-"""
-record_route.py  -  Interactively record a GraphNav map while a human
-teleoperates Spot, then mark capture waypoints for 3D reconstruction.
-
-Workflow
-----------
-1.  Start the script. It takes the robot lease and starts GraphNav recording.
-2.  Teleoperate the robot (via the Boston Dynamics tablet or controller)
-    along the path you want to reconstruct.
-3.  At any point press ENTER to mark the current position as a capture
-    waypoint.  Type a label when prompted (or leave blank for auto-naming).
-4.  Type  q  + ENTER  to stop recording, download the map, and save.
-
-The script writes:
-    <route_dir>/
-    -- route.json
-    -- graph                    <- GraphNav Graph proto
-    -- waypoint_snapshots/
-        --  <snapshot_id>
-
-Usage
---------
-python record_route.py --hostname 192.168.80.3 --route-dir ./routes/lab_loop \
-    [--description "Lab room loop for thesis dataset 1"] \
-    [--auto-capture-distance 0.5]   # mark a waypoint every 0.5 m automatically
-"""
 
 from __future__ import annotations
 
@@ -37,9 +11,8 @@ from typing import Optional
 
 import bosdyn.client
 import bosdyn.client.util
-from bosdyn.api.graph_nav import map_pb2, recording_pb2
+from bosdyn.api.graph_nav import recording_pb2
 from bosdyn.client.graph_nav import GraphNavClient
-from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.recording import GraphNavRecordingServiceClient
 from bosdyn.client.robot_command import RobotCommandClient, blocking_stand
 from scipy.spatial.transform import Rotation

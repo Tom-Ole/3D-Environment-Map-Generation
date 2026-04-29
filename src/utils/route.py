@@ -1,7 +1,3 @@
-"""
-utils/route.py  -  Data model and serialisation for a Spot GraphNav route.
-"""
-
 
 from __future__ import annotations
  

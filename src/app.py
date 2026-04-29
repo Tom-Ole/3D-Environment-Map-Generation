@@ -1,7 +1,3 @@
-"""
-app.py -  Main application to capture images from Spot and save in COLMAP format for 3D reconstruction.
-"""
-
 import time
 import bosdyn.client
 import bosdyn.client.util
@@ -9,6 +5,8 @@ from utils.get_images import get_image, GetImageOptions
 from utils.colmap_wirter import ColmapWriter
 import argparse
 import signal
+from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
+
 
 import logging
 from pathlib import Path
@@ -32,29 +30,33 @@ def main(args):
     robot = sdk.create_robot(args.hostname)
     bosdyn.client.util.authenticate(robot)
     logger.info(f"Connected to robot at {args.hostname}")
+
+    robot.time_sync.wait_for_sync()
+    logger.info("Time sync established")
     
     image_options: GetImageOptions = GetImageOptions(
         output_path=args.output,
         image_sources=args.sources or [
-            "back_depth_in_visual_frame",
-            "back_depth",
+            #"back_depth_in_visual_frame",
+            #"back_depth",
             "back_fisheye_image",
-            "frontleft_depth",
-            "frontleft_depth_in_visual_frame",
+            #"frontleft_depth",
+            #"frontleft_depth_in_visual_frame",
             "frontleft_fisheye_image",
-            "frontright_depth",
-            "frontright_depth_in_visual_frame",
+            #"frontright_depth",
+            #"frontright_depth_in_visual_frame",
             "frontright_fisheye_image",
-            "left_depth",
-            "left_depth_in_visual_frame",
+            #"left_depth",
+            #"left_depth_in_visual_frame",
             "left_fisheye_image",
-            "right_depth",
-            "right_depth_in_visual_frame",
+            #"right_depth",
+            #"right_depth_in_visual_frame",
             "right_fisheye_image",
         ],
         auto_rotate=True,
         save=True,
         show=args.show,
+        tilt_side_cameras=True,
     )
 
     sparse_dir = Path(args.output) / "sparse" / "0"
@@ -69,37 +71,45 @@ def main(args):
 
     logger.info(f"Starting capture: rate = {args.rate:.1f} Hz, max_frames = {args.output}, sources = {image_options.image_sources}")
 
-    while running:
-        loop_start = time.time()
-        frame_id += 1
 
-        try:
-            get_image(robot, image_options, f"{frame_id:05d}", image_results, colmap_writer)
-            consecutive_failures = 0  # reset on success
-        except Exception as e:
-            consecutive_failures += 1 
-            logger.warning(
-                f"Frame {frame_id:05d} FAILED ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}): {e}",
-            )
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                logger.error("Too many consecutive failures - aborting capture.")
+    lease_client = robot.ensure_client(LeaseClient.default_service_name)
+    lease_client.take()
+
+    with LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
+        robot.time_sync.wait_for_sync()
+        logger.info("Lease acquired and time sync established")
+
+        while running:
+            loop_start = time.time()
+            frame_id += 1
+
+            try:
+                get_image(robot, image_options, f"{frame_id:05d}", image_results, colmap_writer)
+                consecutive_failures = 0  # reset on success
+            except Exception as e:
+                consecutive_failures += 1 
+                logger.warning(
+                    f"Frame {frame_id:05d} FAILED ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}): {e}",
+                )
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    logger.error("Too many consecutive failures - aborting capture.")
+                    break
+
+
+            elapsed = time.time() - loop_start
+            sleep_time = dt - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                logger.debug(f"Frame {frame_id:05d} took {elapsed:.3f}s (budget: {dt:.3f}s) - consider lowering the --rate")
+
+            logger.info(f"Capture finished. Frames captured: {frame_id} | Total images {len(image_results)}")
+            logger.info(f"Output directory: {Path(args.output).resolve()}")
+
+            if len(image_results) >= len(image_options.image_sources) * 2:
+                logger.info(f"Max amount of Images taken!")
                 break
-
-
-        elapsed = time.time() - loop_start
-        sleep_time = dt - elapsed
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        else:
-            logger.debug(f"Frame {frame_id:05d} took {elapsed:.3f}s (budget: {dt:.3f}s) - consider lowering the --rate")
-
-        logger.info(f"Capture finished. Frames captured: {frame_id} | Total images {len(image_results)}")
-        logger.info(f"Output directory: {Path(args.output).resolve()}")
-
-        if len(image_results) >= len(image_options.image_sources) * 2:
-            logger.info(f"Max amount of Images taken!")
-            break
-    
+        
 
 if __name__ == "__main__":
 

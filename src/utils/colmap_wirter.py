@@ -1,8 +1,3 @@
-"""
-utils/colmap_writer.py  -  Write COLMAP sparse reconstruction files (cameras.txt, images.txt, points3D.txt)
-"""
-
-
 import logging
 from pathlib import Path
 from typing import Dict
@@ -72,6 +67,9 @@ class ColmapWriter:
             path = self.sparse_dir / filename
             if not path.exists():
                 path.write_text(header)
+            else:
+                path.write_text("")
+                path.write_text(header)
 
     def register_camera(self, source_name: str, width: int, height: int, intrinsics: dict) -> int:
         """
@@ -96,7 +94,7 @@ class ColmapWriter:
         with open(self.sparse_dir / "cameras.txt", "a") as fh:
             fh.write(line)
  
-        logger.debug("Registered camera %d: %s", camera_id, source_name)
+        logger.debug(f"Registered camera {camera_id}: {source_name}")
         return camera_id
     
     def write_image(self, image_name: str, camera_id: int, cam_to_world: np.ndarray) -> int:
