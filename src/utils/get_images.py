@@ -177,8 +177,6 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
     robot_state = robot_state_client.get_robot_state()
 
     if options.tilt_side_cameras:
-        # Group sources so each distinct tilt is applied once.
-        # Buckets: {"left": [...], "right": [...], "neutral": [...]}
         tilt_groups: dict[str, list[str]] = {"left": [], "right": [], "neutral": []}
         for src in options.image_sources:
             sign = _SIDE_CAMERA_ROLL.get(src)
@@ -191,26 +189,35 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
         image_responses = []
         try:
-            for group_key, sources in tilt_groups.items():
+            # Neutral cameras first, while body is still level
+            if tilt_groups["neutral"]:
+                requests = [
+                    build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
+                    for src in tilt_groups["neutral"]
+                ]
+                image_responses.extend(image_client.get_image(requests))
+
+            # Side cameras, each only fired at its own tilt
+            for group_key in ("left", "right"):
+                sources = tilt_groups[group_key]
                 if not sources:
                     continue
 
-                if group_key == "neutral":
-                    roll = 0.0
-                else:
-                    sign = -1.0 if group_key == "left" else +1.0
-                    roll = sign * options.side_camera_tilt_deg
+                sign = -1.0 if group_key == "left" else +1.0
+                roll = sign * options.side_camera_tilt_deg
 
-                if roll != 0.0:
-                    logger.debug(f"Tilting body {roll:.1f}° for {group_key} cameras")
-                    _command_body_tilt(robot, roll, options.tilt_settle_time, lease=lease)
+                logger.debug(f"Tilting body {roll:.1f}° for {group_key} camera(s): {sources}")
+                _command_body_tilt(robot, roll, options.tilt_settle_time, lease=lease)
 
-                requests = [build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8) for src in sources]
+                requests = [
+                    build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
+                    for src in sources
+                ]
                 image_responses.extend(image_client.get_image(requests))
 
         finally:
-            # Always return to a level stance, even on error.
-            if any(tilt_groups[k] for k in ("left", "right")):
+            # Always restore level stance if any side tilt was performed
+            if tilt_groups["left"] or tilt_groups["right"]:
                 logger.debug("Restoring neutral body orientation")
                 _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time, lease=lease)
     else:
@@ -239,9 +246,6 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
         if image.shot.image.format == image_pb2.Image.FORMAT_RAW:
             try:
-                print("YEEESSSSSSSSSSSSSSSs")
-                logger.info("YEEEEEEEEEEEESSSSSSSSs")
-                # here we reshape the raw bytes into an image array because OpenCV's imdecode doesn't support some of the raw formats (e.g. depth)
                 img = raw.reshape((image.shot.image.rows, image.shot.image.cols, num_bytes))
             except ValueError:
                 img = cv2.imdecode(raw, -1) # -1 = unchanged

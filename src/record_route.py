@@ -16,7 +16,8 @@ from bosdyn.client.graph_nav import GraphNavClient
 from bosdyn.client.recording import GraphNavRecordingServiceClient
 from bosdyn.client.robot_command import RobotCommandClient, blocking_stand
 from scipy.spatial.transform import Rotation
-
+import queue
+import threading
 
 from utils.route import RouteDefinition
 
@@ -67,7 +68,7 @@ def get_robot_se2(graph_nav_client: GraphNavClient) -> Optional[tuple[float, flo
     x   = loc.waypoint_tform_body.position.x
     y   = loc.waypoint_tform_body.position.y
     q = loc.waypoint_tform_body.rotation
-    yaw = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")[2],
+    yaw = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")[2]
     return x, y, yaw
 
 
@@ -188,6 +189,8 @@ class RouteRecorder:
         logger.info(f"Route saved  ->  {saved_path}")
         print("\n" + self.route.summary())
 
+# ===================================================================================
+# ===================================================================================
 
 
 def _prompt_mark(recorder: RouteRecorder) -> None:
@@ -203,16 +206,12 @@ def _prompt_mark(recorder: RouteRecorder) -> None:
 
 def recording_loop(recorder: RouteRecorder) -> None:
 
-    import queue
-    import threading
-
     print("\n" + "-" * 60)
     print("RECORDING ACTIVE")
     print("  ENTER           -> mark current position as capture waypoint")
     print("  q + ENTER       -> stop recording and save")
     print("  l + ENTER       -> list marked waypoints so far")
     print("-" * 60 + "\n")
-
 
     while True:
         recorder.check_auto_capture()
@@ -257,7 +256,7 @@ def record_run(args: argparse.Namespace) -> None:
     time.sleep(1.5)
 
     # Mark the starting position automatically as the first waypoint
-    logger.info("Marking starting position as first capture waypoint …")
+    logger.info("Marking starting position as first capture waypoint ...")
     recorder.mark_capture_waypoint(label="start")
 
     try:

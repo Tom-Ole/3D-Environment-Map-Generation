@@ -37,7 +37,7 @@ signal.signal(signal.SIGTERM, _handle_signal)
 
 
 
-def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.Graph TODO: Fix type annotation
+def upload_map(graph_nav_client: GraphNavClient, route_dir: Path): # -> map_pb2.Graph
     """
     Upload the graph topology and all waypoint snapshots from *route_dir* to
     the robot.  Returns the deserialized Graph proto.
@@ -127,28 +127,60 @@ def localise_robot(
     return False
 
 
+def validate_route(route: RouteDefinition) -> bool:
+    seen_ids: dict[str, str] = {}  # waypoint_id -> label
+    valid = True
+    for wp in route.capture_waypoints:
+        if wp.waypoint_id in seen_ids:
+            logger.warning(
+                f"Duplicate waypoint ID '{wp.waypoint_id}' used by both "
+                f"'{seen_ids[wp.waypoint_id]}' and '{wp.label}'. "
+                f"The robot will not move between these stops."
+            )
+            valid = False
+        else:
+            seen_ids[wp.waypoint_id] = wp.label
+    return valid
+
+# https://github.com/boston-dynamics/spot-sdk/blob/master/protos/bosdyn/api/graph_nav/graph_nav.proto
+_STATUS = graph_nav_pb2.NavigationFeedbackResponse
+
+STILL_NAVIGATING = {
+    _STATUS.STATUS_FOLLOWING_ROUTE,
+}
+
+# These are worth retrying - transient physical/timing issues
+RETRYABLE = {
+    _STATUS.STATUS_STUCK,
+    _STATUS.STATUS_LOST,
+    _STATUS.STATUS_COMMAND_TIMED_OUT,
+}
+
+# These indicate a fundamental problem - retrying will not help
+TERMINAL = {
+    _STATUS.STATUS_NO_ROUTE,
+    _STATUS.STATUS_NO_LOCALIZATION,
+    _STATUS.STATUS_NOT_LOCALIZED_TO_ROUTE,
+    _STATUS.STATUS_ROBOT_IMPAIRED,
+    _STATUS.STATUS_CONSTRAINT_FAULT,
+    _STATUS.STATUS_COMMAND_OVERRIDDEN,
+    _STATUS.STATUS_LEASE_ERROR,
+    _STATUS.STATUS_AREA_CALLBACK_ERROR,
+    _STATUS.STATUS_UNKNOWN,
+}
+
+
 def navigate_to_waypoint(
     graph_nav_client: GraphNavClient,
     waypoint_id: str,
     speed_limit: float = 0.0,
     timeout_sec: float = 60.0,
+    max_retries: int = 2,
 ) -> bool:
-    """
-    Command the robot to navigate to *waypoint_id* and block until it arrives
-    or the operation times out / fails.
-
-    Parameters
-    ----------
-    speed_limit : Maximum travel speed in m/s.  0 = use SDK default.
-
-    Returns True if the robot reached the waypoint, False otherwise.
-    """
-
-
     nav_params = None
     if speed_limit > 0:
         nav_params = graph_nav_pb2.TravelParams(
-            max_distance=0.0,          # walk to the waypoint exactly
+            max_distance=0.0,
             velocity_limit=geometry_pb2.SE2VelocityLimit(
                 max_vel=geometry_pb2.SE2Velocity(
                     linear=geometry_pb2.Vec2(x=speed_limit, y=0),
@@ -157,47 +189,75 @@ def navigate_to_waypoint(
             ),
         )
 
-    try:
-        nav_to_cmd_id = graph_nav_client.navigate_to(
-            waypoint_id,
-            travel_params=nav_params,
-            cmd_duration=100,
-        )
-    except Exception as exc:
-        logger.error(f"navigate_to({waypoint_id}) call failed: {exc}")
-        return False
-
-    STILL_NAVIGATING = {
-    graph_nav_pb2.NavigationFeedbackResponse.STATUS_FOLLOWING_ROUTE,
-    #graph_nav_pb2.NavigationFeedbackResponse.STATUS_PREPARING_ROBOT,
-    }
-
-
-    # Poll until the command finishes
-    deadline = time.time() + timeout_sec
-    while time.time() < deadline:
-        if not _running:
-            logger.info("Stop requested - aborting navigation.")
-            return False
-        feedback = graph_nav_client.navigation_feedback(nav_to_cmd_id)
-        status   = feedback.status
-
-        if status == graph_nav_pb2.NavigationFeedbackResponse.STATUS_REACHED_GOAL:
-            return True
-
-        if status not in STILL_NAVIGATING:
-            status_name = graph_nav_pb2.NavigationFeedbackResponse.Status.Name(status)
-            logger.warning(f"Navigation to {waypoint_id} ended with status: {status_name}")
+    for attempt in range(1, max_retries + 2):
+        try:
+            nav_to_cmd_id = graph_nav_client.navigate_to(
+                waypoint_id,
+                travel_params=nav_params,
+                cmd_duration=100,
+            )
+        except Exception as exc:
+            logger.error(f"navigate_to({waypoint_id}) call failed: {exc}")
             return False
 
-        time.sleep(0.25)
+        retry_reason: str | None = None
 
-    logger.warning(f"Navigation to {waypoint_id} timed out after {timeout_sec:.01}s.", waypoint_id, timeout_sec)
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            if not _running:
+                logger.info("Stop requested - aborting navigation.")
+                return False
+
+            feedback = graph_nav_client.navigation_feedback(nav_to_cmd_id)
+            status   = feedback.status
+
+            if status == _STATUS.STATUS_REACHED_GOAL:
+                return True
+
+            if status in STILL_NAVIGATING:
+                time.sleep(0.25)
+                continue
+
+            status_name = _STATUS.Status.Name(status)
+
+            if status in TERMINAL:
+                logger.error(f"Terminal navigation failure for {waypoint_id}: {status_name}")
+                if status == _STATUS.STATUS_ROBOT_IMPAIRED:
+                    logger.error(f"  Impaired status: {feedback.impaired_status}")
+                return False
+
+            if status in RETRYABLE:
+                extra = ""
+                if status == _STATUS.STATUS_STUCK and feedback.HasField("stuck_reason"):
+                    extra = f"- {feedback.stuck_reason}"
+                logger.warning(
+                    f"{status_name}{extra} navigating to {waypoint_id} "
+                    f"(attempt {attempt}/{max_retries + 1})"
+                )
+                retry_reason = status_name
+                break  # exit poll loop -> retry
+
+            # Catch any future statuses not yet in our sets
+            logger.warning(f"Unhandled navigation status {status_name} for {waypoint_id}")
+            return False
+
+        else:
+            # Poll loop exhausted its deadline
+            logger.warning(f"Navigation to {waypoint_id} timed out after {timeout_sec:.0f}s.")
+            retry_reason = "TIMEOUT"
+
+        if attempt > max_retries:
+            logger.error(
+                f"Giving up on {waypoint_id} after {attempt} attempt(s). "
+                f"Last reason: {retry_reason}"
+            )
+            return False
+
+        logger.info(f"Retrying {waypoint_id} in 2 s... (attempt {attempt + 1}/{max_retries + 1})")
+        time.sleep(2.0)
+
     return False
 
-
-
-# ======================== GET IMAGE =========================
 def capture_at_waypoint(
     robot,
     waypoint: CaptureWaypoint,
@@ -227,9 +287,6 @@ def capture_at_waypoint(
     except Exception as exc:
         logger.warning(f"Capture failed at waypoint {waypoint.waypoint_id}: {exc}")
 
-
-
-#============================ Main ===================================
 
 def run_route(args: argparse.Namespace) -> None:
     route_dir = Path(args.route_dir)
@@ -308,7 +365,7 @@ def run_route(args: argparse.Namespace) -> None:
                     break
 
                 logger.info(
-                    f"===== Waypoint {idx + 1} / {total}  [{waypoint.label}]  id={waypoint.waypoint_id}",
+                    f"===== Waypoint {idx + 1} / {total}  [{waypoint.label}]  id={waypoint.waypoint_id} ============",
                 )
 
                 # Navigate
@@ -344,7 +401,7 @@ def run_route(args: argparse.Namespace) -> None:
                 )
 
 
-        # ------------- Done with the route ----------------
+        # Done with the route
         logger.info(
             f"\nRoute complete. Frames captured: {frame_id}  |  Images saved: {len(image_results)}",
         )
@@ -361,7 +418,8 @@ def run_route(args: argparse.Namespace) -> None:
 
 
 
-# ======================== Main entry point =========================
+
+# =================================================
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
