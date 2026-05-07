@@ -201,7 +201,7 @@ def _prompt_mark(recorder: RouteRecorder) -> None:
     if wid:
         print(f"   Waypoint marked: {wid} \n")
     else:
-        print("   Could not mark waypoint (robot not localised?).")
+        print("   Could not mark waypoint.")
 
 
 def recording_loop(recorder: RouteRecorder) -> None:
