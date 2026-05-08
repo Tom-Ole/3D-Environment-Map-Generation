@@ -9,11 +9,14 @@ from pathlib import Path
 import bosdyn.client
 import bosdyn.client.util
 from bosdyn.api.graph_nav import graph_nav_pb2, map_pb2, nav_pb2
+from bosdyn.api.geometry_pb2 import SE3Pose
 from bosdyn.client.graph_nav import GraphNavClient
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.robot_command import RobotCommandClient, RobotCommandBuilder, blocking_stand
 from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.api import geometry_pb2
+from bosdyn.client.frame_helpers import get_a_tform_b, ODOM_FRAME_NAME, BODY_FRAME_NAME
+
 
 from utils.get_images import ColmapWriter, GetImageOptions, get_image
 from utils.route import RouteDefinition, CaptureWaypoint
@@ -91,6 +94,7 @@ def localise_robot(
 
     init_guess = nav_pb2.Localization()
     init_guess.waypoint_id = seed_waypoint_id
+    init_guess.waypoint_tform_body.rotation.w = 1.0
 
     try:
         graph_nav_client.set_localization(
@@ -103,8 +107,11 @@ def localise_robot(
     except Exception as exc:
         logger.warning(f"Fiducial localisation failed ({exc}). Trying waypoint hint...")
         try:
+
             robot_state = robot_state_client.get_robot_state()
-            ko_tform_body = robot_state.kinematic_state.transform_snapshot
+            snapshot = robot_state.kinematic_state.transforms_snapshot          # FrameTreeSnapshot
+            ko_tform_body = get_a_tform_b(snapshot, ODOM_FRAME_NAME, BODY_FRAME_NAME).to_proto()
+            # bosdyn.api.geometry_pb2.SE3Pose
             graph_nav_client.set_localization(
                 initial_guess_localization=init_guess,
                 ko_tform_body=ko_tform_body,
@@ -228,8 +235,8 @@ def navigate_to_waypoint(
 
             if status in RETRYABLE:
                 extra = ""
-                if status == _STATUS.STATUS_STUCK and feedback.HasField("stuck_reason"):
-                    extra = f"- {feedback.stuck_reason}"
+                if status == _STATUS.STATUS_STUCK:
+                    extra = f"- {feedback}"
                 logger.warning(
                     f"{status_name}{extra} navigating to {waypoint_id} "
                     f"(attempt {attempt}/{max_retries + 1})"
@@ -302,11 +309,13 @@ def run_route(args: argparse.Namespace) -> None:
     if not route.seed_waypoint_id:
         logger.error("seed_waypoint_id is not set in route.json. Aborting.")
         return
+    
+    # TODO: CHeck if powered on and standing..
 
     sdk   = bosdyn.client.create_standard_sdk("spot_route_runner")
     robot = sdk.create_robot(args.hostname)
     bosdyn.client.util.authenticate(robot)
-    robot.time_sync.wait_for_sync()
+    robot.time_sync.wait_for_sync(timeout_sec=30)
     logger.info(f"Connected to robot at {args.hostname}")
 
     capture_options: GetImageOptions = GetImageOptions(
@@ -331,6 +340,7 @@ def run_route(args: argparse.Namespace) -> None:
         auto_rotate=True,
         save=True,
         show=False,
+        tilt_side_cameras=True
     )
 
     sparse_dir    = output / "sparse" / "0"
@@ -403,7 +413,7 @@ def run_route(args: argparse.Namespace) -> None:
 
         # Done with the route
         logger.info(
-            f"\nRoute complete. Frames captured: {frame_id}  |  Images saved: {len(image_results)}",
+            f"\nRoute complete. |  Images saved: {len(image_results)}",
         )
         logger.info(f"Output: {output.resolve()}")
 
@@ -415,8 +425,6 @@ def run_route(args: argparse.Namespace) -> None:
                 route.seed_waypoint_id,
                 speed_limit=args.nav_velocity,
             )
-
-
 
 
 # =================================================
@@ -440,7 +448,7 @@ if __name__ == "__main__":
         help="Camera sources to capture. Defaults to all five fisheye cameras.",
     )
     parser.add_argument(
-        "--nav-velocity", type=float, default=0.8, metavar="M/S",
+        "--nav-velocity", type=float, default=0.3, metavar="M/S",
         help="Maximum navigation speed in m/s (0 = SDK default).",
     )
     parser.add_argument(

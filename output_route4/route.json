@@ -1,0 +1,122 @@
+{
+  "route_dir": "output_route",
+  "capture_waypoints": [
+    {
+      "waypoint_id": "untrod-condor-Bhxix35cyQ8V+gHEwBNw8Q==",
+      "label": "start",
+      "distance_from_prev": 0.0,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "untrod-condor-Bhxix35cyQ8V+gHEwBNw8Q==",
+      "label": "wp_001",
+      "distance_from_prev": 0.7128971821132938,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "untrod-condor-Bhxix35cyQ8V+gHEwBNw8Q==",
+      "label": "wp_002",
+      "distance_from_prev": 0.6712673702137844,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "plaguy-python-xufynH2FLMUq.0oQsBiGRw==",
+      "label": "wp_003",
+      "distance_from_prev": 0.22291695317141277,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "tapped-jay-j.ATmf+VXLI2tLKJTSkHHA==",
+      "label": "wp_004",
+      "distance_from_prev": 0.8844139548267762,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "tapped-jay-j.ATmf+VXLI2tLKJTSkHHA==",
+      "label": "wp_005",
+      "distance_from_prev": 0.8470768730994575,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "moire-ibis-rlfyVQS1Vd1hChoL3QQaQQ==",
+      "label": "wp_006",
+      "distance_from_prev": 1.3557123307314858,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "moire-ibis-rlfyVQS1Vd1hChoL3QQaQQ==",
+      "label": "wp_007",
+      "distance_from_prev": 0.516693053802217,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "moire-ibis-rlfyVQS1Vd1hChoL3QQaQQ==",
+      "label": "wp_008",
+      "distance_from_prev": 0.7617800793624987,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "germy-cur-8.XeotCUNr7VgWEyHCv8IQ==",
+      "label": "wp_009",
+      "distance_from_prev": 1.9885610839439296,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "bats-gerbil-uhbaJQbVTHgmMje5qaimIA==",
+      "label": "wp_010",
+      "distance_from_prev": 0.9191592933670508,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "bats-gerbil-uhbaJQbVTHgmMje5qaimIA==",
+      "label": "wp_011",
+      "distance_from_prev": 0.7366851547369968,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "untidy-lemur-2WP5PfV0QHXpC0eweZvmkQ==",
+      "label": "wp_012",
+      "distance_from_prev": 1.0143845296115697,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "untidy-lemur-2WP5PfV0QHXpC0eweZvmkQ==",
+      "label": "wp_013",
+      "distance_from_prev": 0.6869156080187565,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "untidy-lemur-2WP5PfV0QHXpC0eweZvmkQ==",
+      "label": "wp_014",
+      "distance_from_prev": 0.5480273386215085,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "mini-hyrax-9Vo57GfSIrmZC3mFcXytlA==",
+      "label": "wp_015",
+      "distance_from_prev": 1.2727939145415035,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "mini-hyrax-9Vo57GfSIrmZC3mFcXytlA==",
+      "label": "wp_016",
+      "distance_from_prev": 0.7985187303370592,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "undyed-bobcat-GyIHYSY13Cv88uXq3w+zUA==",
+      "label": "wp_017",
+      "distance_from_prev": 1.1912727204411964,
+      "notes": ""
+    },
+    {
+      "waypoint_id": "undyed-bobcat-GyIHYSY13Cv88uXq3w+zUA==",
+      "label": "wp_018",
+      "distance_from_prev": 0.8347144539036769,
+      "notes": ""
+    }
+  ],
+  "seed_waypoint_id": "untrod-condor-Bhxix35cyQ8V+gHEwBNw8Q==",
+  "description": "Test of auto capture distance (0.5m)4",
+  "auto_capture_distance": 0.5
+}

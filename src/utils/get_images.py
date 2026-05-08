@@ -56,8 +56,8 @@ ROTATION_ANGLE = {
 
 # Cameras that need a body roll to point away from the legs.
 _SIDE_CAMERA_ROLL: dict[str, float] = {
-    "left_fisheye_image":  -1.0,   # roll right -> left cam looks more upward
-    "right_fisheye_image": +1.0,   # roll left -> right cam looks more upward
+    "left_fisheye_image":  +1.0,   # roll right -> left cam looks more upward
+    "right_fisheye_image": -1.0,   # roll left -> right cam looks more upward
 }
 
 def se3_to_matrix(se3):

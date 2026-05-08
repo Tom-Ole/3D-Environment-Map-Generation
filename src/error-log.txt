@@ -1,51 +1,433 @@
-2026-04-24 14:10:07,556 [INFO] __main__: Connected to robot at 192.168.10.3
-2026-04-24 14:10:07,587 [INFO] root: Starting lease check-in
-2026-04-24 14:10:09,844 [INFO] __main__: Robot standing and ready.
-2026-04-24 14:10:09,844 [INFO] __main__: Uploading map from output_route …
-2026-04-24 14:10:09,983 [INFO] __main__: Graph uploaded  (3 waypoints, 2 edges)
-2026-04-24 14:10:10,464 [INFO] __main__: Uploaded 3 / 3 waypoint snapshots.
-2026-04-24 14:10:10,465 [INFO] __main__: Attempting localisation (seed waypoint: wifely-coati-uX.Km.lXwFhMknHN0VsrJg==) …
-2026-04-24 14:10:10,559 [INFO] __main__: Localised at waypoint earned-kelp-4fn0G6Z7Ir0BKf1Pvc5DZg==
-2026-04-24 14:10:10,559 [INFO] __main__: Starting route: 4 capture waypoints.
-2026-04-24 14:10:10,559 [INFO] __main__: ===== Waypoint 1 / 4  [start]  id=wifely-coati-uX.Km.lXwFhMknHN0VsrJg==
-2026-04-24 14:10:10,712 [INFO] root: Lease check-in stopped
-Traceback (most recent call last):
-  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 434, in <module>
-    run_route(args)
-  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 339, in run_route
-    reached = navigate_to_waypoint(
-              ^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\run_route.py", line 207, in navigate_to_waypoint
-    graph_nav_pb2.NavigationFeedbackResponse.STATUS_ERROR,
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: STATUS_ERROR
 
-
-
-
-
-2026-04-29 15:02:50,624 [INFO] __main__: Connected to robot at 192.168.10.3
-2026-04-29 15:02:50,639 [INFO] root: Starting lease check-in
-2026-04-29 15:02:50,705 [INFO] __main__: Robot standing and ready.
-2026-04-29 15:02:50,705 [INFO] __main__: Uploading map from output_route2 ...
-2026-04-29 15:02:50,763 [INFO] __main__: Graph uploaded  (3 waypoints, 2 edges)
-2026-04-29 15:02:51,061 [INFO] __main__: Uploaded 3 / 3 waypoint snapshots.
-2026-04-29 15:02:51,061 [INFO] __main__: Attempting localisation (seed waypoint: scabby-merlin-dg2cFN0gLC2G6v84UkW.gw==) ...
-2026-04-29 15:02:51,134 [INFO] __main__: Localised at waypoint scabby-merlin-dg2cFN0gLC2G6v84UkW.gw==
-2026-04-29 15:02:51,134 [INFO] __main__: Starting route: 4 capture waypoints.
-2026-04-29 15:02:51,134 [INFO] __main__: ===== Waypoint 1 / 4  [start]  id=scabby-merlin-dg2cFN0gLC2G6v84UkW.gw==
-2026-04-29 15:02:54,527 [INFO] __main__: Capturing at waypoint scabby-merlin-dg2cFN0gLC2G6v84UkW.gw== (start) ...
-2026-04-29 15:02:55,025 [INFO] __main__:  Frame 00001 captured (5 cameras).
-2026-04-29 15:02:55,025 [INFO] __main__: ===== Waypoint 2 / 4  [wp_001]  id=scabby-merlin-dg2cFN0gLC2G6v84UkW.gw==
-2026-04-29 15:02:56,554 [INFO] __main__: Capturing at waypoint scabby-merlin-dg2cFN0gLC2G6v84UkW.gw== (wp_001) ...
-2026-04-29 15:02:57,065 [INFO] __main__:  Frame 00002 captured (5 cameras).
-2026-04-29 15:02:57,065 [INFO] __main__: ===== Waypoint 3 / 4  [wp_002]  id=bats-narwal-n+wmtrfxDPgUijD0hHcaiA==
-2026-04-29 15:03:10,587 [WARNING] __main__: Navigation to bats-narwal-n+wmtrfxDPgUijD0hHcaiA== ended with status: STATUS_STUCK
-2026-04-29 15:03:10,587 [WARNING] __main__: Failed to reach waypoint bats-narwal-n+wmtrfxDPgUijD0hHcaiA== (1/3 consecutive failures).
-2026-04-29 15:03:10,587 [INFO] __main__: ===== Waypoint 4 / 4  [wp_003]  id=brawny-ant-OJ2IRFeMWEolNhopEh5JUw==
-2026-04-29 15:03:39,334 [WARNING] __main__: Navigation to brawny-ant-OJ2IRFeMWEolNhopEh5JUw== ended with status: STATUS_STUCK
-2026-04-29 15:03:39,334 [WARNING] __main__: Failed to reach waypoint brawny-ant-OJ2IRFeMWEolNhopEh5JUw== (2/3 consecutive failures).
-2026-04-29 15:03:39,334 [INFO] __main__: 
-Route complete. Frames captured: 2  |  Images saved: 10
-2026-04-29 15:03:39,337 [INFO] __main__: Output: C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\output
-2026-04-29 15:03:39,337 [INFO] root: Lease check-in stopped
+2026-05-08 12:51:04,745 [INFO] __main__: Connected to robot at 192.168.10.3
+2026-05-08 12:51:04,831 [INFO] root: Starting lease check-in
+2026-05-08 12:51:05,094 [INFO] __main__: Robot standing and ready.
+2026-05-08 12:51:05,094 [INFO] __main__: Uploading map from output_route ...
+2026-05-08 12:51:05,244 [INFO] __main__: Graph uploaded  (11 waypoints, 10 edges)
+2026-05-08 12:51:06,698 [INFO] __main__: Uploaded 11 / 11 waypoint snapshots.
+2026-05-08 12:51:06,700 [INFO] __main__: Attempting localisation (seed waypoint: least-wasp-GSjAQQxT6JQOUUsNGku5aA==) ...
+2026-05-08 12:51:06,818 [WARNING] __main__: Fiducial localisation failed (bosdyn.api.graph_nav.SetLocalizationResponse (ResponseError): Code: 8 (STATUS_NO_MATCHING_FIDUCIAL)). Trying waypoint hint...
+2026-05-08 12:51:06,982 [INFO] __main__: Localised at waypoint least-wasp-GSjAQQxT6JQOUUsNGku5aA==
+2026-05-08 12:51:06,982 [INFO] __main__: Starting route: 12 capture waypoints.
+2026-05-08 12:51:06,982 [INFO] __main__: ===== Waypoint 1 / 12  [start]  id=least-wasp-GSjAQQxT6JQOUUsNGku5aA== ============
+2026-05-08 12:51:10,158 [INFO] __main__: Capturing at waypoint least-wasp-GSjAQQxT6JQOUUsNGku5aA== (start) ...
+2026-05-08 12:51:14,400 [INFO] __main__:  Frame 00001 captured (5 cameras).
+2026-05-08 12:51:14,402 [INFO] __main__: ===== Waypoint 2 / 12  [wp_001]  id=least-wasp-GSjAQQxT6JQOUUsNGku5aA== ============
+2026-05-08 12:51:16,932 [INFO] __main__: Capturing at waypoint least-wasp-GSjAQQxT6JQOUUsNGku5aA== (wp_001) ...
+2026-05-08 12:51:21,053 [INFO] __main__:  Frame 00002 captured (5 cameras).
+2026-05-08 12:51:21,055 [INFO] __main__: ===== Waypoint 3 / 12  [wp_002]  id=piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== ============
+2026-05-08 12:51:36,007 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237495
+      nanos: 977518592
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237627
+    nanos: 71860427
+  }
+  response_timestamp {
+    seconds: 1778237627
+    nanos: 71877867
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8255139008417873
+    y: -1.713243918567716
+    z: 3.9656745424733586
+  }
+  rotation {
+    x: 0.0024338700212118984
+    y: 0.003805042849587869
+    z: -0.75353474216349947
+    w: 0.657392676678622
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== (attempt 1/3)
+2026-05-08 12:51:36,007 [INFO] __main__: Retrying piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== in 2 s... (attempt 2/3)
+2026-05-08 12:51:52,090 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237512
+      nanos: 58781696
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237643
+    nanos: 153908699
+  }
+  response_timestamp {
+    seconds: 1778237643
+    nanos: 160095376
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8204746825774563
+    y: -1.7168254622427539
+    z: 3.9670702790868382
+  }
+  rotation {
+    x: 0.0024339928709728852
+    y: 0.0038051375261167857
+    z: -0.75356125546271391
+    w: 0.65736226282417587
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_MOVING
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== (attempt 2/3)
+2026-05-08 12:51:52,090 [INFO] __main__: Retrying piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== in 2 s... (attempt 3/3)
+2026-05-08 12:52:08,365 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237528
+      nanos: 287001088
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237659
+    nanos: 391772106
+  }
+  response_timestamp {
+    seconds: 1778237659
+    nanos: 391786512
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.81757142124068
+    y: -1.7180548719880848
+    z: 3.9675618072848104
+  }
+  rotation {
+    x: 0.0024312646628777469
+    y: 0.0038068126561278063
+    z: -0.75309630766335889
+    w: 0.65789487311411465
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== (attempt 3/3)
+2026-05-08 12:52:08,365 [ERROR] __main__: Giving up on piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== after 3 attempt(s). Last reason: STATUS_STUCK
+2026-05-08 12:52:08,365 [WARNING] __main__: Failed to reach waypoint piano-bowfin-i4NXKjx+4T39cP4H35Rh.Q== (1/3 consecutive failures).
+2026-05-08 12:52:08,365 [INFO] __main__: ===== Waypoint 4 / 12  [wp_003]  id=nearby-weasel-mNvckUwCV.15AprxdNAWQw== ============
+2026-05-08 12:52:22,434 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237542
+      nanos: 381069056
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237673
+    nanos: 474784494
+  }
+  response_timestamp {
+    seconds: 1778237673
+    nanos: 474807222
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8170564288585576
+    y: -1.7181703996678122
+    z: 3.967541620153356
+  }
+  rotation {
+    x: 0.0024313601909782879
+    y: 0.0038068386290761062
+    z: -0.753126748655157
+    w: 0.65786004153358457
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to nearby-weasel-mNvckUwCV.15AprxdNAWQw== (attempt 1/3)
+2026-05-08 12:52:22,443 [INFO] __main__: Retrying nearby-weasel-mNvckUwCV.15AprxdNAWQw== in 2 s... (attempt 2/3)
+2026-05-08 12:52:38,597 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237558
+      nanos: 556436736
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237689
+    nanos: 671442677
+  }
+  response_timestamp {
+    seconds: 1778237689
+    nanos: 671457279
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8165339360055746
+    y: -1.7186111798779931
+    z: 3.9675400069359745
+  }
+  rotation {
+    x: 0.0024315542050472147
+    y: 0.0038066405774151318
+    z: -0.75316728060564686
+    w: 0.65781354579070606
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to nearby-weasel-mNvckUwCV.15AprxdNAWQw== (attempt 2/3)
+2026-05-08 12:52:38,610 [INFO] __main__: Retrying nearby-weasel-mNvckUwCV.15AprxdNAWQw== in 2 s... (attempt 3/3)
+2026-05-08 12:52:54,974 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237574
+      nanos: 933571584
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237706
+    nanos: 51511531
+  }
+  response_timestamp {
+    seconds: 1778237706
+    nanos: 51533579
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8156681147128513
+    y: -1.7169842589685453
+    z: 3.967591273233964
+  }
+  rotation {
+    x: 0.0024320827672661464
+    y: 0.0038063958995893893
+    z: -0.75324111745117772
+    w: 0.65772898902661536
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to nearby-weasel-mNvckUwCV.15AprxdNAWQw== (attempt 3/3)
+2026-05-08 12:52:54,974 [ERROR] __main__: Giving up on nearby-weasel-mNvckUwCV.15AprxdNAWQw== after 3 attempt(s). Last reason: STATUS_STUCK
+2026-05-08 12:52:54,974 [WARNING] __main__: Failed to reach waypoint nearby-weasel-mNvckUwCV.15AprxdNAWQw== (2/3 consecutive failures).
+2026-05-08 12:52:54,974 [INFO] __main__: ===== Waypoint 5 / 12  [wp_004]  id=eleven-midge-ETeyA9FqKAi79c3bCcUs2g== ============
+2026-05-08 12:53:09,285 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237589
+      nanos: 168186368
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237720
+    nanos: 261480825
+  }
+  response_timestamp {
+    seconds: 1778237720
+    nanos: 261501916
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8162400940846641
+    y: -1.7166716474856529
+    z: 3.9675944462075958
+  }
+  rotation {
+    x: 0.002432738304766837
+    y: 0.0038058384897864542
+    z: -0.75335790582846918
+    w: 0.6575953078126856
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to eleven-midge-ETeyA9FqKAi79c3bCcUs2g== (attempt 1/3)
+2026-05-08 12:53:09,285 [INFO] __main__: Retrying eleven-midge-ETeyA9FqKAi79c3bCcUs2g== in 2 s... (attempt 2/3)
+2026-05-08 12:53:25,519 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237605
+      nanos: 453892352
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237736
+    nanos: 563308817
+  }
+  response_timestamp {
+    seconds: 1778237736
+    nanos: 563329709
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8158454678346017
+    y: -1.7171890829311678
+    z: 3.96759275619936
+  }
+  rotation {
+    x: 0.0024334724175023468
+    y: 0.0038054749167642735
+    z: -0.75348069673850215
+    w: 0.65745445591278562
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to eleven-midge-ETeyA9FqKAi79c3bCcUs2g== (attempt 2/3)
+2026-05-08 12:53:25,519 [INFO] __main__: Retrying eleven-midge-ETeyA9FqKAi79c3bCcUs2g== in 2 s... (attempt 3/3)
+2026-05-08 12:53:41,639 [WARNING] __main__: STATUS_STUCK- header {
+  request_header {
+    request_timestamp {
+      seconds: 1778237621
+      nanos: 609960448
+    }
+    client_name: "spot_route_runnertom-laptop:run_route.py-10888"
+  }
+  request_received_timestamp {
+    seconds: 1778237752
+    nanos: 694324136
+  }
+  response_timestamp {
+    seconds: 1778237752
+    nanos: 694340138
+  }
+  error {
+    code: CODE_OK
+  }
+}
+status: STATUS_STUCK
+last_ko_tform_goal {
+  position {
+    x: -2.8162177386049008
+    y: -1.714952973345286
+    z: 3.9676103339431661
+  }
+  rotation {
+    x: 0.0024344017341095697
+    y: 0.0038049324196597492
+    z: -0.75363130692287572
+    w: 0.65728197382021925
+  }
+}
+impaired_state {
+  impaired_status: IMPAIRED_STATUS_OK
+}
+body_movement_status: BODY_STATUS_SETTLED
+path_following_mode: PATH_MODE_DEFAULT
+stuck_reason: STUCK_REASON_OBSTACLE
+completed_route {
+}
+blockage_status: BLOCKAGE_STATUS_ROUTE_CLEAR
+ navigating to eleven-midge-ETeyA9FqKAi79c3bCcUs2g== (attempt 3/3)
+2026-05-08 12:53:41,639 [ERROR] __main__: Giving up on eleven-midge-ETeyA9FqKAi79c3bCcUs2g== after 3 attempt(s). Last reason: STATUS_STUCK
+2026-05-08 12:53:41,647 [WARNING] __main__: Failed to reach waypoint eleven-midge-ETeyA9FqKAi79c3bCcUs2g== (3/3 consecutive failures).
+2026-05-08 12:53:41,647 [ERROR] __main__: Too many navigation failures - aborting route.
+2026-05-08 12:53:41,647 [INFO] __main__: 
+Route complete. |  Images saved: 10
+2026-05-08 12:53:41,647 [INFO] __main__: Output: C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\output
+2026-05-08 12:53:41,647 [INFO] root: Lease check-in stopped

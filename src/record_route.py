@@ -175,12 +175,14 @@ class RouteRecorder:
         if self.auto_capture_distance <= 0:
             return
         pose = get_robot_se2(self.graph_nav_client)
-        if pose is None or self._last_auto_pose is None:
+        if pose is None:
+            return
+        if self._last_auto_pose is None:
             self._last_auto_pose = pose
             return
         if se2_distance(pose, self._last_auto_pose) >= self.auto_capture_distance:
             self.mark_capture_waypoint()
-            self._last_auto_pose = pose
+            self._last_auto_pose = get_robot_se2(self.graph_nav_client)
 
     def save(self) -> None:
         """Download the map from the robot and save everything to disk."""
@@ -213,23 +215,36 @@ def recording_loop(recorder: RouteRecorder) -> None:
     print("  l + ENTER       -> list marked waypoints so far")
     print("-" * 60 + "\n")
 
-    while True:
-        recorder.check_auto_capture()
-        line = input("Command: ").strip().lower()
+    stop_event = threading.Event()
 
-        if line == "":
-            _prompt_mark(recorder)
-        elif line == "q":
-            logger.info("Stopping recording …")
-            break
-        elif line == "l":
-            if not recorder.route.capture_waypoints:
-                print("  (no waypoints marked yet)")
+    def auto_capture_worker():
+        while not stop_event.is_set():
+            recorder.check_auto_capture()
+            time.sleep(0.3)
+
+    worker = threading.Thread(target=auto_capture_worker, daemon=True)
+    worker.start()
+    
+    try:
+        while True:
+            line = input("Command: ").strip().lower()
+
+            if line == "":
+                _prompt_mark(recorder)
+            elif line == "q":
+                logger.info("Stopping recording …")
+                break
+            elif line == "l":
+                if not recorder.route.capture_waypoints:
+                    print("  (no waypoints marked yet)")
+                else:
+                    for i, wp in enumerate(recorder.route.capture_waypoints):
+                        print(f"  [{i:3d}] {wp.label:<20s}  {wp.waypoint_id}")
             else:
-                for i, wp in enumerate(recorder.route.capture_waypoints):
-                    print(f"  [{i:3d}] {wp.label:<20s}  {wp.waypoint_id}")
-        else:
-            print("  Unknown command. ENTER=mark  q=quit  l=list")
+                print("  Unknown command. ENTER=mark  q=quit  l=list")
+    finally:
+        stop_event.set()
+        worker.join()
  
         
 
@@ -239,7 +254,7 @@ def record_run(args: argparse.Namespace) -> None:
     sdk   = bosdyn.client.create_standard_sdk("spot_route_recorder")
     robot = sdk.create_robot(args.hostname)
     bosdyn.client.util.authenticate(robot)
-    # robot.time_sync.wait_for_sync()
+    robot.time_sync.wait_for_sync()
     logger.info(f"Connected to robot at {args.hostname}")
 
 
@@ -252,11 +267,15 @@ def record_run(args: argparse.Namespace) -> None:
 
     recorder.start_recording()
 
-    # Give the robot a moment to create the first waypoint
-    time.sleep(1.5)
+    deadline = time.time() + 10.0
+    while time.time() < deadline:
+        if recorder.get_current_waypoint_id():
+            break
+        time.sleep(0.5)
+    else:
+        logger.error("Robot did not localise within 10s of starting recording.")
+        return
 
-    # Mark the starting position automatically as the first waypoint
-    logger.info("Marking starting position as first capture waypoint ...")
     recorder.mark_capture_waypoint(label="start")
 
     try:
