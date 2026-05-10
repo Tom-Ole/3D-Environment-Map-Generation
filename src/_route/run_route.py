@@ -19,7 +19,7 @@ from bosdyn.client.frame_helpers import get_a_tform_b, ODOM_FRAME_NAME, BODY_FRA
 
 
 from utils.get_images import ColmapWriter, GetImageOptions, get_image
-from utils.route import RouteDefinition, CaptureWaypoint
+from _route.route import RouteDefinition, CaptureWaypoint
 
 logging.basicConfig(
     level=logging.INFO,

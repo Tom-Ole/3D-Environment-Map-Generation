@@ -21,29 +21,10 @@ from bosdyn.client.robot_command import RobotCommandBuilder
 from bosdyn.geometry import EulerZXY
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 
+from utils.ImageOptions import ImageOptions
 from utils.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class GetImageOptions:
-    output_path: str = "./output"
-    image_service: str = ImageClient.default_service_name
-
-    # List of Spot camera source names to capture
-    image_sources: list[str] | None = None
-
-    # Print available sources and exit early when True.
-    list_sources: bool = False
-
-    auto_rotate: bool = True
-
-    show: bool = False
-    save: bool = True
-
-    tilt_side_cameras: bool = False
-    side_camera_tilt_deg: float = 15.0
-    tilt_settle_time: float = 1.0 # How long to wait after issuing the tilt command before capturing.
 
 
 ROTATION_ANGLE = {
@@ -73,13 +54,6 @@ def adjust_intrinsics_for_rotation(
     original_rows: int,
     original_cols: int,
 ) -> dict:
-    """
-    Re-compute the principal point (cx, cy) after the image has been rotated
-    by *angle_deg* counter-clockwise around its centre.
- 
-    ndimage.rotate(reshape=True) expands the canvas so the full rotated image
-    fits; that shifts the centre and therefore the principal point.
-    """
     if angle_deg == 0:
         return dict(intrinsics)
  
@@ -125,12 +99,6 @@ def pixel_format_num_bytes(pixel_format) -> int:
     return mapping.get(pixel_format, 1)
 
 
-def list_image_sources(image_client) -> None:
-    image_sources = image_client.list_image_sources()
-    print("Image sources:")
-    for source in image_sources:
-        print("\t" + source.name)
-
 def _command_body_tilt(robot: Robot, roll_deg: float, settle_time: float = 1.0, lease = None) -> None:
 
     command_client = robot.ensure_client(RobotCommandClient.default_service_name)
@@ -149,88 +117,39 @@ def _command_body_tilt(robot: Robot, roll_deg: float, settle_time: float = 1.0, 
     time.sleep(settle_time)
 
 
+def get_image(robot: Robot, image_client: ImageClient, robot_state_client: RobotStateClient, options: ImageOptions, frame_id: str, colmap_writer: ColmapWriter, lease = None) -> None:
 
-def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_results: List[Dict], colmap_writer: ColmapWriter, lease = None) -> None:
-    """
-    Capture one frame from all configured cameras, save images + JSON metadata,
-    and record the frame in the COLMAP sparse model files.
- 
-    Parameters
-    ----------
-    robot          : authenticated Spot SDK Robot object
-    options        : capture configuration
-    frame_id       : zero-padded string used as the filename stem, e.g. ``"00042"``
-    image_results  : list to which result dicts are appended (for the caller)
-    colmap_writer  : shared :class:`ColmapWriter` instance
-    """
-
-    image_client = robot.ensure_client(options.image_service)
-    robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
-
-    if options.list_sources:
-        list_image_sources(image_client)
-        return
-
-    if not options.image_sources:
-        raise ValueError("No image_sources specified in GetImageOptions")
+    if not options.sources:
+        raise ValueError("No image_sources specified in ImageOptions")
 
     robot_state = robot_state_client.get_robot_state()
 
-    if options.tilt_side_cameras:
-        tilt_groups: dict[str, list[str]] = {"left": [], "right": [], "neutral": []}
-        for src in options.image_sources:
-            sign = _SIDE_CAMERA_ROLL.get(src)
-            if sign is None:
-                tilt_groups["neutral"].append(src)
-            elif sign < 0:
-                tilt_groups["left"].append(src)
+    def take_image_request(source_name: str):
+        return build_image_request(source_name, quality_percent=100, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGBA_U8)
+
+    image_responses = []
+
+    try:
+        for source in options.sources:
+            if options.side_tilt and source in _SIDE_CAMERA_ROLL:
+                roll_deg = options.side_tile_angle * _SIDE_CAMERA_ROLL[source]
+                logger.info(f"Tilting body by {roll_deg} deg for better {source} capture")
+                _command_body_tilt(robot, roll_deg, options.tilt_settle_time, lease)
+                request = take_image_request(source.value)
+                image_responses.extend(image_client.get_image([request]))
+                _command_body_tilt(robot, 0, options.tilt_settle_time, lease)
             else:
-                tilt_groups["right"].append(src)
-
-        image_responses = []
-        try:
-            # Neutral cameras first, while body is still level
-            if tilt_groups["neutral"]:
-                requests = [
-                    build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
-                    for src in tilt_groups["neutral"]
-                ]
-                image_responses.extend(image_client.get_image(requests))
-
-            # Side cameras, each only fired at its own tilt
-            for group_key in ("left", "right"):
-                sources = tilt_groups[group_key]
-                if not sources:
-                    continue
-
-                sign = -1.0 if group_key == "left" else +1.0
-                roll = sign * options.side_camera_tilt_deg
-
-                logger.debug(f"Tilting body {roll:.1f}° for {group_key} camera(s): {sources}")
-                _command_body_tilt(robot, roll, options.tilt_settle_time, lease=lease)
-
-                requests = [
-                    build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
-                    for src in sources
-                ]
-                image_responses.extend(image_client.get_image(requests))
-
-        finally:
-            # Always restore level stance if any side tilt was performed
-            if tilt_groups["left"] or tilt_groups["right"]:
-                logger.debug("Restoring neutral body orientation")
-                _command_body_tilt(robot, roll_deg=0.0, settle_time=options.tilt_settle_time, lease=lease)
-    else:
-        image_request = [
-            build_image_request(source, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
-            for source in options.image_sources
-        ]
-        image_responses = image_client.get_image(image_request)
+                request = take_image_request(source.value)
+                image_responses.extend(image_client.get_image([request]))
+    except Exception as e:
+        logger.error(f"Error during side tilt: {e}")
+        _command_body_tilt(robot, 0, options.tilt_settle_time, lease)
+        raise e
 
 
     base = Path(options.output_path)
     images_dir = base / "images"
-    metadata_dir = base / "metadata"
+    metadata_dir = base / "extra" / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
     for image in image_responses:
@@ -342,12 +261,6 @@ def get_image(robot: Robot, options: GetImageOptions, frame_id: str, image_resul
 
         if options.show:
             cv2.imshow(source_name, img)
-
-        image_results.append({
-            "source":    source_name,
-            "timestamp": image.shot.acquisition_time,
-            "path":      str(image_save_path),
-        })
 
     if options.show:
         cv2.waitKey(0) # blocks (1 for non-blocking)

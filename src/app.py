@@ -1,15 +1,22 @@
+import math
 import time
 import bosdyn.client
 import bosdyn.client.util
-from utils.get_images import get_image, GetImageOptions
+from utils.ImageOptions import ImageOptions, ImageSources
 from utils.colmap_wirter import ColmapWriter
 import argparse
 import signal
-from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
-
+from bosdyn.client.lease import LeaseClient
+from bosdyn.client.robot_state import RobotStateClient
+from bosdyn.client.robot_command import RobotCommandClient, blocking_stand
+from bosdyn.client.frame_helpers import get_odom_tform_body
+from bosdyn.client.image import ImageClient
+from bosdyn.client.lease import LeaseKeepAlive
 
 import logging
 from pathlib import Path
+
+from utils.get_images import get_image
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,6 +30,21 @@ def handle_sigint(sig, frame):
 signal.signal(signal.SIGINT,  handle_sigint)
 signal.signal(signal.SIGTERM, handle_sigint)
 
+def _body_xy(robot_state_client: RobotStateClient) -> tuple[float, float]:
+    """Get the robot's current (x, y) position in the odom frame."""
+    robot_state = robot_state_client.get_robot_state()
+    tform_odom_body = get_odom_tform_body(robot_state.kinematic_state.transforms_snapshot)
+    return tform_odom_body.x, tform_odom_body.y
+
+def _dist(a: tuple, b: tuple) -> float:
+    """Euclidean distance between two (x, y) points."""
+    return math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+
+def list_image_sources(image_client) -> None:
+    image_sources = image_client.list_image_sources()
+    print("Image sources:")
+    for source in image_sources:
+        print("\t" + source.name)
 
 def main(args):
     
@@ -33,82 +55,58 @@ def main(args):
 
     robot.time_sync.wait_for_sync()
     logger.info("Time sync established")
-    
-    image_options: GetImageOptions = GetImageOptions(
+
+
+    image_options = ImageOptions(
         output_path=args.output,
-        image_sources=args.sources or [
-            #"back_depth_in_visual_frame",
-            #"back_depth",
-            "back_fisheye_image",
-            #"frontleft_depth",
-            #"frontleft_depth_in_visual_frame",
-            "frontleft_fisheye_image",
-            #"frontright_depth",
-            #"frontright_depth_in_visual_frame",
-            "frontright_fisheye_image",
-            #"left_depth",
-            #"left_depth_in_visual_frame",
-            "left_fisheye_image",
-            #"right_depth",
-            #"right_depth_in_visual_frame",
-            "right_fisheye_image",
-        ],
-        auto_rotate=True,
-        save=True,
-        show=args.show,
-        tilt_side_cameras=True,
-    )
+        sources=ImageSources.get_color()
+        )
+    image_options.show = args.show
+    
 
     sparse_dir = Path(args.output) / "sparse" / "0"
-    colmap_writer = ColmapWriter(sparse_dir)
-    logger.info(f"COLMAP Sparse model will be written to {sparse_dir}")
+    with ColmapWriter(sparse_dir) as colmap_writer:
+        logger.info(f"COLMAP Sparse model will be written to {sparse_dir}")
 
-    dt = 1.0 / args.rate
-    frame_id = 0
-    image_results: list = []
-    consecutive_failures = 0
-    MAX_CONSECUTIVE_FAILURES = 5
+        # Clients
+        lease_client       = robot.ensure_client(LeaseClient.default_service_name)
+        robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+        image_client       = robot.ensure_client(ImageClient.default_service_name)
+        command_client     = robot.ensure_client(RobotCommandClient.default_service_name)
 
-    logger.info(f"Starting capture: rate = {args.rate:.1f} Hz, max_frames = {args.output}, sources = {image_options.image_sources}")
+        # state
+        step_m = float(args.n)
+        frame_count = 0
+        last_pos = _body_xy(robot_state_client)
 
-
-    lease_client = robot.ensure_client(LeaseClient.default_service_name)
-    lease_client.take()
-
-    with LeaseKeepAlive(lease_client, must_acquire=True, return_at_exit=True):
-        robot.time_sync.wait_for_sync()
-        logger.info("Lease acquired and time sync established")
+        logger.info(f"Tablet is in control. Walking {step_m:.2f} m between captures. Ctrl-C to stop.")
 
         while running:
-            loop_start = time.time()
-            frame_id += 1
+            curr_pos = _body_xy(robot_state_client)
+            walked = _dist(last_pos, curr_pos)
 
-            try:
-                get_image(robot, image_options, f"{frame_id:05d}", image_results, colmap_writer)
-                consecutive_failures = 0  # reset on success
-            except Exception as e:
-                consecutive_failures += 1 
-                logger.warning(
-                    f"Frame {frame_id:05d} FAILED ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}): {e}",
-                )
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    logger.error("Too many consecutive failures - aborting capture.")
-                    break
+            if walked < step_m:
+                time.sleep(0.1)
+                continue
+
+            logger.info(f"walked {walked:.2f} m - takeing lease for capture {frame_count:05d}")
 
 
-            elapsed = time.time() - loop_start
-            sleep_time = dt - elapsed
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            else:
-                logger.debug(f"Frame {frame_id:05d} took {elapsed:.3f}s (budget: {dt:.3f}s) - consider lowering the --rate")
+            lease = lease_client.acquire()
+            with LeaseKeepAlive(lease_client=lease_client, must_acquire=True, return_at_exit=True):
+                blocking_stand(command_client, timeout_sec=10)
 
-            logger.info(f"Capture finished. Frames captured: {frame_id} | Total images {len(image_results)}")
-            logger.info(f"Output directory: {Path(args.output).resolve()}")
+                frame_id = f"frame_{frame_count:05d}"
 
-            if len(image_results) >= len(image_options.image_sources) * 2:
-                logger.info(f"Max amount of Images taken!")
-                break
+                get_image(robot=robot, image_client=image_client, robot_state_client=robot_state_client, image_options=image_options, frame_id= frame_id, colmap_writer=colmap_writer, lease=lease)
+
+                frame_count += 1
+                logger.info("Capture #%s done. Total frames: %d", frame_id, frame_count)
+            
+            last_pos = _body_xy(robot_state_client)
+
+
+
         
 
 if __name__ == "__main__":
@@ -126,17 +124,8 @@ if __name__ == "__main__":
         help="Root directory for captured data.",
     )
     parser.add_argument(
-        "--sources", nargs="+", default=None,
-        metavar="SOURCE",
-        help="Camera source names to capture. Defaults to all five fisheye cameras.",
-    )
-    parser.add_argument(
-        "--rate", type=float, default=3.0,
-        help="Target capture rate in Hz. 2-4 Hz recommended for COLMAP.",
-    )
-    parser.add_argument(
-        "--max-frames", type=int, default=500,
-        help="Stop after this many frames (also stop with Ctrl-C).",
+        "--n", default=1,
+        help="The distance between between captures in meters.",
     )
     parser.add_argument(
         "--show", action="store_true",
@@ -146,7 +135,6 @@ if __name__ == "__main__":
         "-v", "--verbose", action="store_true",
         help="Enable DEBUG-level log messages.",
     )
-    args = parser.parse_args()
  
     args = parser.parse_args()
 

@@ -19,7 +19,7 @@ from scipy.spatial.transform import Rotation
 import queue
 import threading
 
-from utils.route import RouteDefinition
+from _route.route import RouteDefinition
 
 logging.basicConfig(
     level=logging.INFO,
