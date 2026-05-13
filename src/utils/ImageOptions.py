@@ -52,7 +52,7 @@ class ImageOptions:
     output_path: str
     sources: list[ImageSources] | None = None
 
-    correct_rotation: bool = True
+    correct_image_rotation: bool = True
     show: bool = False
     save: bool = True
 

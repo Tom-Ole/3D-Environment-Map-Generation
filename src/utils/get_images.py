@@ -125,7 +125,7 @@ def get_image(robot: Robot, image_client: ImageClient, robot_state_client: Robot
     robot_state = robot_state_client.get_robot_state()
 
     def take_image_request(source_name: str):
-        return build_image_request(source_name, quality_percent=100, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGBA_U8)
+        return build_image_request(source_name, quality_percent=100, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
 
     image_responses = []
 
@@ -175,7 +175,7 @@ def get_image(robot: Robot, image_client: ImageClient, robot_state_client: Robot
         original_cols = image.shot.image.cols
 
         rotation_applied = 0.0
-        if options.auto_rotate:
+        if options.correct_image_rotation:
             if source_name in ROTATION_ANGLE:
                 rotation_applied = ROTATION_ANGLE[source_name]
                 if rotation_applied != 0:
