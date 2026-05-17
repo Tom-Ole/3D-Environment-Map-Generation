@@ -43,14 +43,17 @@ class SpotController:
         self.command_client = robot.ensure_client(RobotCommandClient.default_service_name)
         self.robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
         
-
+        # Estop
         self.is_estop = False
         self.estop_endpoint = EstopEndpoint(self.estop_client,"GUI",5.0)
 
         self.estop_endpoint.force_simple_setup()
         self.estop_keep_alive = EstopKeepAlive(self.estop_endpoint)
 
+        # Lease
+        self.has_lease = False
 
+        # Paths
         self.image_output_path = self.output_path / "images"
     
 

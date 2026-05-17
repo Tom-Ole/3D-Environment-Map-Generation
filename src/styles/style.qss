@@ -1,64 +1,299 @@
+/* =========================================================
+   GLOBAL
+========================================================= */
+
 QMainWindow {
-    background-color: #1e1e1e;
+    background-color: #131417;
 }
 
-/* Global */
 QWidget {
-    background-color: #1e1e1e;
-    color: #e6e6e6;
+    background-color: #131417;
+    color: #e8e8e8;
 
-    font-family: "Segoe UI";
-    font-size: 18px;
+    font-family: "Inter", "Segoe UI", sans-serif;
+    font-size: 16px;
 }
 
-/* Buttons */
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
 QPushButton {
-    background-color: #2b2b2b;
+    background-color: #1f2229;
 
-    border: 2px solid #3d3d3d;
-    border-radius: 10px;
+    border: 1px solid #323640;
+    border-radius: 14px;
 
-    padding: 12px;
+    padding: 14px 20px;
 
-    font-size: 24px;
-    font-weight: bold;
+    color: #f5f5f5;
 
-    color: #f0f0f0;
+    font-size: 20px;
+    font-weight: 600;
+
+    min-height: 42px;
 }
 
 QPushButton:hover {
-    background-color: #3a3a3a;
-    border: 2px solid #5a5a5a;
+    background-color: #2a2f38;
+    border: 1px solid #4a5160;
 }
 
 QPushButton:pressed {
-    background-color: #252525;
+    background-color: #181b21;
+    padding-top: 16px;
+    padding-bottom: 12px;
 }
 
-/* Text areas */
-QTextEdit {
-    background-color: #252526;
+QPushButton:disabled {
+    background-color: #16181d;
+    color: #666;
+    border: 1px solid #22252b;
+}
 
-    border: 2px solid #3c3c3c;
+
+/* =========================================================
+   SPECIAL BUTTONS
+========================================================= */
+
+/* ESTOP */
+QPushButton#estopButton {
+    background-color: #7a1d1d;
+
+    border: 2px solid #aa3a3a;
+    border-radius: 18px;
+
+    font-size: 34px;
+    font-weight: 700;
+
+    color: white;
+}
+
+QPushButton#estopButton:disabled {
+    background-color: #3d1010;
+    border: 2px solid #5a2222;
+    color: #a06060;
+}
+
+QPushButton#estopButton:hover {
+    background-color: #922626;
+    border: 2px solid #d14a4a;
+}
+
+QPushButton#estopButton:pressed {
+    background-color: #5f1616;
+}
+
+/* Release */
+QPushButton#releaseButton {
+    background-color: #1f4d37;
+
+    border: 2px solid #2d7d57;
+
+    font-size: 28px;
+}
+
+QPushButton#releaseButton:hover {
+    background-color: #286347;
+}
+
+QPushButton#releaseButton:disabled {
+    background-color: #152e21;
+    border: 2px solid #1d4d36;
+    color: #507060;
+}
+
+/* Lease */
+QPushButton#leaseButton {
+    background-color: #1f3f63;
+    border: 2px solid #35689f;
+}
+
+QPushButton#leaseButton:hover {
+    background-color: #28507d;
+}
+
+QPushButton#leaseButton:disabled {
+    background-color: #152538;
+    border: 2px solid #223d5e;
+    color: #506880;
+}
+
+
+/* =========================================================
+   TOPBAR NAVIGATION
+========================================================= */
+
+QPushButton#topBarButton {
+    background-color: #1b1e24;
+
+    border: 1px solid #2d313a;
+    border-radius: 16px;
+
+    font-size: 22px;
+    font-weight: 700;
+
+    padding: 18px;
+}
+
+QPushButton#topBarButton:hover {
+    background-color: #262b33;
+    border: 1px solid #4a5160;
+}
+
+QPushButton#topBarButton:checked {
+    background-color: #2d5a88;
+    border: 1px solid #5f9ee3;
+}
+
+
+/* =========================================================
+   TEXT / LOGS
+========================================================= */
+
+QTextEdit {
+    background-color: #181b20;
+
+    border: 1px solid #2d3139;
+    border-radius: 16px;
+
+    padding: 14px;
+
+    color: #d8d8d8;
+
+    font-size: 16px;
+
+    selection-background-color: #2d5a88;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #3a404d;
+    border-radius: 5px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #505868;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+
+/* =========================================================
+   LABELS
+========================================================= */
+
+QLabel {
+    color: #f0f0f0;
+    font-size: 18px;
+}
+
+QLabel#titleLabel {
+    font-size: 26px;
+    font-weight: 700;
+}
+
+QLabel#sectionLabel {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+
+/* =========================================================
+   FRAMES / PANELS
+========================================================= */
+
+QFrame {
+    background-color: #181b20;
+
+    border: 1px solid #2b3038;
+    border-radius: 18px;
+}
+
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+QLineEdit {
+    background-color: #111318;
+
+    border: 1px solid #303540;
     border-radius: 10px;
 
     padding: 10px;
 
-    color: #dddddd;
+    color: #e8e8e8;
 
+    font-size: 15px;
+}
+
+QLineEdit:focus {
+    border: 1px solid #5f9ee3;
+}
+
+
+/* =========================================================
+   CHECKBOXES
+========================================================= */
+
+QCheckBox {
+    spacing: 10px;
     font-size: 17px;
 }
 
-/* Labels */
-QLabel {
-    color: #e6e6e6;
-    font-size: 24px;
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+
+    border-radius: 5px;
+
+    border: 1px solid #555;
+    background: #1e2229;
 }
 
-/* Optional framed panels */
-QFrame {
-    background-color: #252526;
+QCheckBox::indicator:checked {
+    background-color: #3c7edb;
+    border: 1px solid #6aa6ff;
+}
 
-    border: 2px solid #333333;
-    border-radius: 12px;
+
+/* =========================================================
+   TOOLTIP
+========================================================= */
+
+QToolTip {
+    background-color: #2a2f38;
+    color: white;
+
+    border: 1px solid #5a6578;
+
+    padding: 8px;
+
+    font-size: 14px;
+}
+
+
+/* =========================================================
+   STATUS BAR
+========================================================= */
+
+QStatusBar {
+    background-color: #181b20;
+    border-top: 1px solid #2c313a;
+}
+
+QStatusBar QLabel {
+    color: #cfcfcf;
 }

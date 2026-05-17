@@ -6,8 +6,9 @@ from typing import Callable, List, Tuple
 class SimSpotController:
 
     def __init__(self):
-        print("init SimSpotController")
-    
+        self.has_lease = False
+
+
     # ESTOP
 
     def estop(self):
@@ -62,8 +63,10 @@ class SimSpotController:
     # Lease
 
     def take_lease(self):
+        self.has_lease = True
         print("Take lease")
 
     def release_lease(self):
+        self.has_lease = False
         print("Release lease")
     

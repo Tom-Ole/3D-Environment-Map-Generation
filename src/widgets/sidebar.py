@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import (
 )
 
 
-
 class Sidebar(QWidget):
 
 
@@ -29,13 +28,13 @@ class Sidebar(QWidget):
 
         # ESTOP button
         self.estop_btn = QPushButton("ESTOP")
-        self.estop_btn.setMinimumHeight(220)
-        self.estop_btn.clicked.connect(self.controller.estop)
+        self.estop_btn.clicked.connect(self._estop)
+        self.estop_btn.setDisabled(False)
         
         # Release button
         self.release_btn = QPushButton("Release")
-        self.release_btn.clicked.connect(self.controller.release)
-        self.release_btn.setMinimumHeight(120)
+        self.release_btn.clicked.connect(self._release)
+        self.release_btn.setDisabled(True)
 
         # Stats Area
 
@@ -51,7 +50,6 @@ class Sidebar(QWidget):
         # Bottom Button
         self.lease_btn = QPushButton("Take Lease") # make it dynamic when Lease is taken (should switch to "Return Lease")
         self.lease_btn.clicked.connect(self.lease)
-        self.lease_btn.setMinimumHeight(70)
 
         layout.addWidget(self.estop_btn)
         layout.addWidget(self.release_btn)
@@ -60,7 +58,28 @@ class Sidebar(QWidget):
 
         self.setLayout(layout)
 
+
+        # QSS
+        self.estop_btn.setObjectName("estopButton")
+        self.release_btn.setObjectName("releaseButton")
+        self.lease_btn.setObjectName("leaseButton")
+    
+
+    def _estop(self):
+        self.controller.estop()
+        self.release_btn.setDisabled(False)
+        self.estop_btn.setDisabled(True)
+
+    def _release(self):
+        self.controller.release()
+        self.release_btn.setDisabled(True)
+        self.estop_btn.setDisabled(False)
+
     def lease(self):
-        self.controller.take_lease()
-        self.controller.release_lease()
+        if not self.controller.has_lease:   # or whatever your flag is
+            self.controller.take_lease()
+            self.lease_btn.setText("Return Lease")
+        else:
+            self.controller.release_lease()
+            self.lease_btn.setText("Take Lease")
 

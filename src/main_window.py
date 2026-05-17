@@ -19,8 +19,8 @@ class MainWindow(QMainWindow):
 
         # Main Horizontal Layout
         main_layout = QHBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # Left Sidebar
         self.sidebar = Sidebar(controller)
@@ -29,7 +29,7 @@ class MainWindow(QMainWindow):
         right_container = QWidget()
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(10)
+        right_layout.setSpacing(0)
 
         self.topbar = TopBar(controller)
         self.content = ContentArea(controller)
@@ -40,6 +40,24 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.bottombar, 1)
 
         right_container.setLayout(right_layout)
+
+        # Top bar
+        self.topbar.auto_clicked.connect(
+            self.content.show_auto_page
+        )
+
+        self.topbar.record_clicked.connect(
+            self.content.show_record_page
+        )
+
+        self.topbar.upload_clicked.connect(
+            self.content.show_upload_page
+        )
+
+        self.topbar.manual_clicked.connect(
+            self.content.show_manual_page
+        )
+
 
         # Add to Main Layout
         main_layout.addWidget(self.sidebar, 2)
