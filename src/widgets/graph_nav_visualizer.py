@@ -432,9 +432,16 @@ def _load_map(path):
         if not os.path.exists(snap_file):
             continue
         with open(snap_file, "rb") as f:
-            snap = map_pb2.EdgeSnapshot()
-            snap.ParseFromString(f.read())
-            edge_snapshots[snap.id] = snap
+            try:
+                snap = map_pb2.EdgeSnapshot()
+                snap.ParseFromString(f.read())
+                edge_snapshots[snap.id] = snap
+            except Exception as e:
+                # TODO: Fix error: Error parsing message with type 'bosdyn.api.graph_nav.EdgeSnapshot'
+                # Only appears on Windows when trieng to load the map.
+                # Works fine when ignoring Exception
+                # print(e)
+                pass
 
     for anchor in graph.anchoring.anchors:
         anchors[anchor.id] = anchor

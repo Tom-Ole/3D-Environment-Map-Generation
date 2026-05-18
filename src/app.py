@@ -45,7 +45,6 @@ def login_prompt():
 
 def main():
 
-
     app = QApplication(sys.argv)
 
     options = get_args()
