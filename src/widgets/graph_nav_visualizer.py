@@ -476,4 +476,3 @@ def _load_map(path):
         f"{len(anchors)} anchors, {len(anchored_wos)} anchored world objects"
     )
     return graph, waypoints, snapshots, edge_snapshots, anchors, anchored_wos
-
