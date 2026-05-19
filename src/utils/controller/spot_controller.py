@@ -8,9 +8,19 @@ from bosdyn.client.robot_state import RobotStateClient
 from bosdyn.client.robot_command import RobotCommandClient
 from bosdyn.client.image import ImageClient
 from bosdyn.client.estop import EstopClient, EstopEndpoint, EstopKeepAlive
+from bosdyn.client.graph_nav import GraphNavClient
+from bosdyn.client.map_processing import MapProcessingServiceClient
+from bosdyn.client.recording import GraphNavRecordingServiceClient
+from bosdyn.client.lease import LeaseClient, LeaseKeepAlive, ResourceAlreadyClaimedError
 import bosdyn.client.util
-from bosdyn.api import estop_pb2 as estop_protos
-from bosdyn.client.robot import Robot
+from bosdyn.client.robot import PowerClient, Robot
+
+from utils.route.execute_route import GraphNavInterface
+
+from PyQt5.QtCore import QObject, pyqtSignal
+
+from utils.route.record_route import RecordingInterface
+from utils.worker.record_worker import RecordWorker
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +35,7 @@ def create_check_path(path: Path) -> None:
 
 
 
-class SpotController:
+class SpotController(QObject):
 
     def __init__(self, robot: Robot, output_path = "./output"):
 
@@ -42,6 +52,11 @@ class SpotController:
         self.image_client = robot.ensure_client(ImageClient.default_service_name)
         self.command_client = robot.ensure_client(RobotCommandClient.default_service_name)
         self.robot_state_client = robot.ensure_client(RobotStateClient.default_service_name)
+        self.graph_nav_client = robot.ensure_client(GraphNavClient.default_service_name)
+        self.power_client = robot.ensure_client(PowerClient.default_service_name)
+        self.recording_client = robot.ensure_client(GraphNavRecordingServiceClient.default_service_name)
+        self.map_processing_client = robot.ensure_client(MapProcessingServiceClient.default_service_name)
+
         
         # Estop
         self.is_estop = False
@@ -55,7 +70,13 @@ class SpotController:
 
         # Paths
         self.image_output_path = self.output_path / "images"
+
+        # Errror 
+        self.error_signal = pyqtSignal(str)
     
+        # Record route
+        self._recording_interface = None
+        self._record_worker = None
 
     # ESTOP
 
@@ -79,17 +100,58 @@ class SpotController:
 
     # NAVIGATE ROUTE
 
-    def record_route(self):
-        """ Record the route taken by the robot during navigation, including timestamps and sensor data for each point in the route """
-        print("Recording route with timestamps and sensor data...")
+    def record_route_start(self,download_filepath: str, session_name: str, user_name: str, on_finished: Callable, on_error: Callable):
+        client_metadata = GraphNavRecordingServiceClient.make_client_metadata(
+        session_name=session_name, client_username=user_name, client_id='RecordingClient',
+        client_type='Python SDK')
+        self._recording_interface = RecordingInterface(self.robot, 
+                                                       download_filepath, 
+                                                       client_metadata,
+                                                       self.recording_client,
+                                                       self,self.graph_nav_client,
+                                                       self.map_processing_client,
+                                                        )
+        self._record_worker = RecordWorker(self._recording_interface.start)
+        self._record_worker.error.connect(on_error)
+        self._record_worker.finished.connect(on_finished)
+        self._record_worker.start()
 
-    def upload_route(self):
-        """Upload a route that the robot should traverse"""
-        print("Upload a route that the robot should traverse")
+    def record_route_waypoint(self, on_error: Callable):
+        self._record_worker = RecordWorker(self._recording_interface.create_waypoint)
+        self._record_worker.error.connect(on_error)
+        self._record_worker.start()
 
-    def execute_route(self):
-        """ Execute a predefined route for the robot to follow """
-        print("Executing predefined route...")
+    def record_route_stop(self, create_loop, on_finished: Callable, on_error: Callable):
+        self._record_worker = RecordWorker(
+            self._recording_interface.stop,
+            create_loop=create_loop
+        )
+        self._record_worker.error.connect(on_error)
+        self._record_worker.finished.connect(on_finished)
+        self._record_worker.start()
+
+    def execute_route(self, path: str) -> Callable:
+        """Execute a predefined route for the robot to follow"""
+
+        try:
+            with LeaseKeepAlive(self.lease_client, must_acquire=True, return_at_exit=True) as lease:
+                interface = GraphNavInterface(
+                                            self.robot, 
+                                            path, 
+                                            self.command_client, 
+                                            self.robot_state_client, 
+                                            self.graph_nav_client, 
+                                            self.power_client,
+                                            lease
+                                            )
+                interface.run()
+                return interface.clear_graph
+        except ResourceAlreadyClaimedError:
+            print("The robot\'s lease is currently in use. Check for a tablet connection or try again in a few seconds.")
+            raise
+
+      
+
 
     # MANUAL RUN
 

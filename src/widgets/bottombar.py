@@ -10,9 +10,15 @@ class BottomBar(QWidget):
 
         layout = QHBoxLayout()
 
-        status = QLabel("Status / Console / Logs")
-        status.setAlignment(Qt.AlignCenter)
+        self._status = QLabel("Status / Console / Logs")
+        self._status.setAlignment(Qt.AlignCenter)
 
-        layout.addWidget(status)
+        layout.addWidget(self._status)
 
         self.setLayout(layout)
+
+        self.controller.error_signal.connect(self._show_error)
+
+    def _show_error(self, message: str):
+        self._status.setText(f"Error: {message}")
+        self._status.setStyleSheet("color: red;")

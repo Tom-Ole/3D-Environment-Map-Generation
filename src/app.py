@@ -1,3 +1,5 @@
+import cv2 # Fixes "ImportError: libGL.so.1: cannot open shared object file: No such file or directory" on some Linux distros
+
 import sys
 import argparse
 
@@ -11,6 +13,9 @@ import bosdyn.client.util
 
 from utils.controller.spot_controller import SpotController
 from utils.controller.sim_spot_controller import SimSpotController
+
+
+# TODO: more research sublease
 
 
 def login_prompt():
@@ -38,7 +43,7 @@ def login_prompt():
     cancel_btn.clicked.connect(dialog.reject)
 
     if dialog.exec_() == QDialog.Rejected:
-        sys.exit(0)  # user cancelled — exit cleanly
+        sys.exit(0)  # user cancelled - exit cleanly
 
     return username_textbox.text(), password_textbox.text()
 

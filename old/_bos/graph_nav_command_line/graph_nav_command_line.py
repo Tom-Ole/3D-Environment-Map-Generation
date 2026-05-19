@@ -16,7 +16,7 @@ import time
 import traceback
 
 import google.protobuf.timestamp_pb2
-import graph_nav_util
+import old._bos.graph_nav_command_line.graph_nav_util as graph_nav_util
 import grpc
 
 import bosdyn.client.channel

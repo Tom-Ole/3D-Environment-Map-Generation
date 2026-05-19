@@ -37,14 +37,14 @@ def _numpy_to_poly_data(pts):
 
 
 def _mat_to_vtk(mat):
-    """4×4 numpy matrix → vtkTransform."""
+    """4x4 numpy matrix → vtkTransform."""
     t = vtk.vtkTransform()
     t.SetMatrix(mat.flatten())
     return t
 
 
 def _vtk_to_mat(transform):
-    """vtkTransform → 4×4 numpy matrix."""
+    """vtkTransform → 4x4 numpy matrix."""
     tf_matrix = transform.GetMatrix()
     out = np.eye(4)
     for r in range(4):
@@ -279,7 +279,7 @@ class GraphNavWidget(QWidget):
         widget.load_map("/path/to/map_folder", anchoring=False, show_waypoint_text=True)
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, placeholder_text=None):
         super().__init__(parent)
 
         self._vtk_widget = QVTKRenderWindowInteractor(self)
@@ -298,7 +298,11 @@ class GraphNavWidget(QWidget):
         layout.addWidget(self._vtk_widget)
 
         # Placeholder text shown before any map is loaded
-        self._placeholder = QLabel("No map loaded.\nSelect a GraphNav folder and click Load.")
+        text = "No map loaded.\nSelect a GraphNav folder and click Load."
+        if placeholder_text is not None:
+            text = placeholder_text
+    
+        self._placeholder = QLabel(text)
         self._placeholder.setAlignment(Qt.AlignCenter)
         self._placeholder.setStyleSheet("color: #888; font-size: 14px;")
         layout.addWidget(self._placeholder)
@@ -372,6 +376,27 @@ class GraphNavWidget(QWidget):
         self._vtk_widget.setVisible(False)
         self._placeholder.setText("No map loaded.\nSelect a GraphNav folder and click Load.")
         self._placeholder.setVisible(True)
+
+    def refresh(self, graph, waypoints: dict, snapshots: dict, *, show_waypoint_text: bool = True):
+        """
+        Re-render from live graph data (e.g. polled from the robot during recording).
+        Accepts the same data structures that _render_graph expects.
+        """
+        if not graph or not graph.waypoints:
+            return
+
+        self._renderer.RemoveAllViewProps()
+        avg_pos = _render_graph(graph, waypoints, snapshots, self._renderer, show_waypoint_text)
+
+        camera = self._renderer.GetActiveCamera()
+        camera.SetViewUp(0, 0, 1)
+        camera.SetPosition(*(avg_pos + np.array([-1.0, 0.0, 5.0])))
+        camera.SetFocalPoint(*avg_pos)
+        self._renderer.ResetCamera()
+
+        self._placeholder.setVisible(False)
+        self._vtk_widget.setVisible(True)
+        self._vtk_widget.GetRenderWindow().Render()
 
 
 # ---------------------------------------------------------------------------
@@ -451,3 +476,4 @@ def _load_map(path):
         f"{len(anchors)} anchors, {len(anchored_wos)} anchored world objects"
     )
     return graph, waypoints, snapshots, edge_snapshots, anchors, anchored_wos
+

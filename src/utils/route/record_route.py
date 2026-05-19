@@ -5,45 +5,34 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 """Command line interface integrating options to record maps with WASD controls. """
-import argparse
-import logging
 import os
-import sys
 import time
 
-import google.protobuf.timestamp_pb2
-import graph_nav_util
-import grpc
-from google.protobuf import wrappers_pb2 as wrappers
 
-import bosdyn.client.channel
-import bosdyn.client.util
+import utils.route.graph_nav_util as graph_nav_util
+
 from bosdyn.api.graph_nav import map_pb2, map_processing_pb2, recording_pb2
-from bosdyn.client import ResponseError, RpcError, create_standard_sdk
-from bosdyn.client.graph_nav import GraphNavClient
-from bosdyn.client.map_processing import MapProcessingServiceClient
 from bosdyn.client.math_helpers import Quat, SE3Pose
-from bosdyn.client.recording import GraphNavRecordingServiceClient
+from bosdyn.client.recording import GraphNavRecordingServiceClient, NotReadyYetError
+
 
 
 class RecordingInterface(object):
     """Recording service command line interface."""
 
-    def __init__(self, robot, download_filepath, client_metadata, use_gps=False):
+    def __init__(self, robot, download_filepath, client_metadata, recording_client, graph_nav_client, map_processing_client):
         # Keep the robot instance and it's ID.
         self._robot = robot
-
-        self.use_gps = use_gps
 
         # Force trigger timesync.
         self._robot.time_sync.wait_for_sync()
 
         # Filepath for the location to put the downloaded graph and snapshots.
+        # TODO: maybe change to just download_filepath
         self._download_filepath = os.path.join(download_filepath, 'downloaded_graph')
 
         # Set up the recording service client.
-        self._recording_client = self._robot.ensure_client(
-            GraphNavRecordingServiceClient.default_service_name)
+        self._recording_client = recording_client
 
         # Create the recording environment.
         self._recording_environment = GraphNavRecordingServiceClient.make_recording_environment(
@@ -51,10 +40,9 @@ class RecordingInterface(object):
                 client_metadata=client_metadata))
 
         # Set up the graph nav service client.
-        self._graph_nav_client = robot.ensure_client(GraphNavClient.default_service_name)
+        self._graph_nav_client = graph_nav_client
 
-        self._map_processing_client = robot.ensure_client(
-            MapProcessingServiceClient.default_service_name)
+        self._map_processing_client = map_processing_client
 
         # Store the most recent knowledge of the state of the robot based on rpc calls.
         self._current_graph = None
@@ -74,9 +62,12 @@ class RecordingInterface(object):
             '6': self._list_graph_waypoint_and_edge_ids,
             '7': self._create_new_edge,
             '8': self._create_loop,
-            '9': self._auto_close_loops_prompt,
             'a': self._optimize_anchoring
         }
+
+        # default use is:
+        #  0, 1, move (set default waypoint [4])..., 2, (optional create loop [8]), a, 5
+
 
     def should_we_start_recording(self):
         # Before starting to record, check the state of the GraphNav system.
@@ -123,7 +114,7 @@ class RecordingInterface(object):
                 status = self._recording_client.stop_recording()
                 print('Successfully stopped recording a map.')
                 break
-            except bosdyn.client.recording.NotReadyYetError as err:
+            except NotReadyYetError as err:
                 # It is possible that we are not finished recording yet due to
                 # background processing. Try again every 1 second.
                 if first_iter:
@@ -289,43 +280,6 @@ class RecordingInterface(object):
 
         self._create_new_edge(edge_waypoints)
 
-    def _auto_close_loops_prompt(self, *args):
-        print("""
-        Options:
-        (0) Close all loops.
-        (1) Close only fiducial-based loops.
-        (2) Close only odometry-based loops.
-        (q) Back.
-        """)
-        try:
-            inputs = input('>')
-        except NameError:
-            return
-        req_type = str.split(inputs)[0]
-        close_fiducial_loops = False
-        close_odometry_loops = False
-        if req_type == '0':
-            close_fiducial_loops = True
-            close_odometry_loops = True
-        elif req_type == '1':
-            close_fiducial_loops = True
-        elif req_type == '2':
-            close_odometry_loops = True
-        elif req_type == 'q':
-            return
-        else:
-            print('Unrecognized command. Going back.')
-            return
-        self._auto_close_loops(close_fiducial_loops, close_odometry_loops)
-
-    def _auto_close_loops(self, close_fiducial_loops, close_odometry_loops, *args):
-        """Automatically find and close all loops in the graph."""
-        response = self._map_processing_client.process_topology(
-            params=map_processing_pb2.ProcessTopologyRequest.Params(
-                do_fiducial_loop_closure=wrappers.BoolValue(value=close_fiducial_loops),
-                do_odometry_loop_closure=wrappers.BoolValue(value=close_odometry_loops)),
-            modify_map_on_server=True)
-        print(f'Created {len(response.new_subgraph.edges)} new edge(s).')
 
     def _optimize_anchoring(self, *args):
         """Call anchoring optimization on the server, producing a globally optimal reference frame for waypoints to be expressed in."""
@@ -374,92 +328,22 @@ class RecordingInterface(object):
         from_T_to = from_tf.mult(to_tf.inverse())
         return from_T_to.to_proto()
 
-    def run(self):
-        """Main loop for the command line interface."""
-        while True:
-            print("""
-            Options:
-            (0) Clear map.
-            (1) Start recording a map.
-            (2) Stop recording a map.
-            (3) Get the recording service's status.
-            (4) Create a default waypoint in the current robot's location.
-            (5) Download the map after recording.
-            (6) List the waypoint ids and edge ids of the map on the robot.
-            (7) Create new edge between existing waypoints using odometry.
-            (8) Create new edge from last waypoint to first waypoint using odometry.
-            (9) Automatically find and close loops.
-            (a) Optimize the map's anchoring.
-            (q) Exit.
-            """)
-            try:
-                inputs = input('>')
-            except NameError:
-                pass
-            req_type = str.split(inputs)[0]
+    def start(self):
+        """Stage 1: Clear map and begin recording. Call once on Start button."""
+        self._clear_map()
+        self._start_recording()
 
-            if req_type == 'q':
-                break
+    def create_waypoint(self):
+        """Stage 2: Can be called repeatedly while recording."""
+        self._create_default_waypoint()
 
-            if req_type not in self._command_dictionary:
-                print('Request not in the known command dictionary.')
-                continue
-            try:
-                cmd_func = self._command_dictionary[req_type]
-                cmd_func(str.split(inputs)[1:])
-            except Exception as e:
-                print(e)
+    def stop(self, create_loop: bool = False):
+        """Stage 3: Stop, finalize and download. Call once on Stop button."""
+        self._stop_recording()
+        if create_loop:
+            self._create_loop()
+        self._optimize_anchoring()
+        self._download_full_graph()
 
 
-def main():
-    """Run the command-line interface."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    bosdyn.client.util.add_base_arguments(parser)
-    parser.add_argument('-d', '--download-filepath',
-                        help='Full filepath for where to download graph and snapshots.',
-                        default=os.getcwd())
-    parser.add_argument(
-        '-n', '--recording_user_name', help=
-        'If a special user name should be attached to this session, use this name. If not provided, the robot username will be used.',
-        default='')
-    parser.add_argument(
-        '-s', '--recording_session_name', help=
-        'Provides a special name for this recording session. If not provided, the download filepath will be used.',
-        default='')
-    parser.add_argument(
-        '-g', '--use-gps', action='store_true',
-        help='Record the map with GPS enabled. The robot must have a working GPS payload.')
-    options = parser.parse_args()
 
-    # Create robot object.
-    sdk = bosdyn.client.create_standard_sdk('RecordingClient')
-    robot = sdk.create_robot(options.hostname)
-    bosdyn.client.util.authenticate(robot)
-
-    # Parse session and user name options.
-    session_name = options.recording_session_name
-    if session_name == '':
-        session_name = os.path.basename(options.download_filepath)
-    user_name = options.recording_user_name
-    if user_name == '':
-        user_name = robot._current_user
-
-    # Crate metadata for the recording session.
-    client_metadata = GraphNavRecordingServiceClient.make_client_metadata(
-        session_name=session_name, client_username=user_name, client_id='RecordingClient',
-        client_type='Python SDK')
-    recording_command_line = RecordingInterface(robot, options.download_filepath, client_metadata,
-                                                options.use_gps)
-
-    try:
-        recording_command_line.run()
-        return True
-    except Exception as exc:  # pylint: disable=broad-except
-        print(exc)
-        print('Recording command line client threw an error.')
-        return False
-
-
-if __name__ == '__main__':
-    if not main():
-        sys.exit(1)
