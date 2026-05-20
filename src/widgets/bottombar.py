@@ -10,7 +10,7 @@ class BottomBar(QWidget):
 
         layout = QHBoxLayout()
 
-        self._status = QLabel("Status / Console / Logs")
+        self._status = QLabel(" ")
         self._status.setAlignment(Qt.AlignCenter)
 
         layout.addWidget(self._status)

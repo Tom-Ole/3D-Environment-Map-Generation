@@ -5,6 +5,7 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 """Command line interface integrating options to record maps with WASD controls. """
+import datetime
 import os
 import time
 
@@ -29,7 +30,7 @@ class RecordingInterface(object):
 
         # Filepath for the location to put the downloaded graph and snapshots.
         # TODO: maybe change to just download_filepath
-        self._download_filepath = os.path.join(download_filepath, 'downloaded_graph')
+        self._download_filepath = os.path.join(download_filepath, "route")
 
         # Set up the recording service client.
         self._recording_client = recording_client
@@ -50,23 +51,6 @@ class RecordingInterface(object):
         self._current_waypoint_snapshots = dict()  # maps id to waypoint snapshot
         self._current_edge_snapshots = dict()  # maps id to edge snapshot
         self._current_annotation_name_to_wp_id = dict()
-
-        # Add recording service properties to the command line dictionary.
-        self._command_dictionary = {
-            '0': self._clear_map,
-            '1': self._start_recording,
-            '2': self._stop_recording,
-            '3': self._get_recording_status,
-            '4': self._create_default_waypoint,
-            '5': self._download_full_graph,
-            '6': self._list_graph_waypoint_and_edge_ids,
-            '7': self._create_new_edge,
-            '8': self._create_loop,
-            'a': self._optimize_anchoring
-        }
-
-        # default use is:
-        #  0, 1, move (set default waypoint [4])..., 2, (optional create loop [8]), a, 5
 
 
     def should_we_start_recording(self):
@@ -286,12 +270,12 @@ class RecordingInterface(object):
         response = self._map_processing_client.process_anchoring(
             params=map_processing_pb2.ProcessAnchoringRequest.Params(),
             modify_anchoring_on_server=True, stream_intermediate_results=False,
-            apply_gps_results=self.use_gps)
+            apply_gps_results=False)
         if response.status == map_processing_pb2.ProcessAnchoringResponse.STATUS_OK:
             print(f'Optimized anchoring after {response.iteration} iteration(s).')
             # If we are using GPS, the GPS coordinates in the graph have been changed, so we need
             # to re-download the graph.
-            if self.use_gps:
+            if False:
                 print('Downloading updated graph...')
                 self._current_graph = self._graph_nav_client.download_graph()
         else:
@@ -329,19 +313,18 @@ class RecordingInterface(object):
         return from_T_to.to_proto()
 
     def start(self):
-        """Stage 1: Clear map and begin recording. Call once on Start button."""
         self._clear_map()
         self._start_recording()
 
     def create_waypoint(self):
-        """Stage 2: Can be called repeatedly while recording."""
         self._create_default_waypoint()
 
     def stop(self, create_loop: bool = False):
-        """Stage 3: Stop, finalize and download. Call once on Stop button."""
-        self._stop_recording()
         if create_loop:
             self._create_loop()
+
+
+        self._stop_recording()
         self._optimize_anchoring()
         self._download_full_graph()
 

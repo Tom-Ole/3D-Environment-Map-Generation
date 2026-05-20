@@ -64,7 +64,7 @@ def main():
 
 
     if(not options.isSim):
-        sdk = bosdyn.client.create_standard_sdk("estop_gui")
+        sdk = bosdyn.client.create_standard_sdk("auto_3D")
         robot = sdk.create_robot(options.hostname)
         bosdyn.client.util.authenticate(robot, askpass=login_prompt)
         controller = SpotController(robot)

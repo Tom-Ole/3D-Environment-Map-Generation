@@ -37,8 +37,11 @@ def create_check_path(path: Path) -> None:
 
 class SpotController(QObject):
 
-    def __init__(self, robot: Robot, output_path = "./output"):
+    # Errror 
+    error_signal = pyqtSignal(str)
 
+    def __init__(self, robot: Robot, output_path = "./output"):
+        super().__init__()
         self.output_path = Path(output_path) / datetime.now().strftime("%Y%m%d_%H_%M%S")
         create_check_path(self.output_path)
 
@@ -56,13 +59,24 @@ class SpotController(QObject):
         self.power_client = robot.ensure_client(PowerClient.default_service_name)
         self.recording_client = robot.ensure_client(GraphNavRecordingServiceClient.default_service_name)
         self.map_processing_client = robot.ensure_client(MapProcessingServiceClient.default_service_name)
+        self.lease_client = robot.ensure_client(LeaseClient.default_service_name)
 
         
         # Estop
         self.is_estop = False
-        self.estop_endpoint = EstopEndpoint(self.estop_client,"GUI",5.0)
+        self.estop_endpoint = EstopEndpoint(self.estop_client,"auto_3D",10.0)
 
-        self.estop_endpoint.force_simple_setup()
+        active_config = self.estop_client.get_config()
+
+        if active_config.endpoints:
+            try:
+                self.estop_endpoint.register(active_config.unique_id)
+            except:
+                self.estop_endpoint.force_simple_setup()
+        else:
+            print("No active endpoints for estop register. Force simple setup")
+            self.estop_endpoint.force_simple_setup()
+
         self.estop_keep_alive = EstopKeepAlive(self.estop_endpoint)
 
         # Lease
@@ -70,15 +84,22 @@ class SpotController(QObject):
 
         # Paths
         self.image_output_path = self.output_path / "images"
-
-        # Errror 
-        self.error_signal = pyqtSignal(str)
     
         # Record route
         self._recording_interface = None
         self._record_worker = None
 
+    def _on_close():
+        # TODO: handle right closure of ESTOP (remove stop)
+        # TODO: handle handback of lease etc. to prev. owner
+        # TODO: record graph visulizer needs to be cleaned / or all vtk instances
+        # TODO: remvove empty self.output_paths
+        pass
+
     # ESTOP
+
+    def _setup_estop(self):
+        pass
 
     def estop(self):
         self.estop_keep_alive.stop()
@@ -101,6 +122,7 @@ class SpotController(QObject):
     # NAVIGATE ROUTE
 
     def record_route_start(self,download_filepath: str, session_name: str, user_name: str, on_finished: Callable, on_error: Callable):
+        
         client_metadata = GraphNavRecordingServiceClient.make_client_metadata(
         session_name=session_name, client_username=user_name, client_id='RecordingClient',
         client_type='Python SDK')
@@ -108,7 +130,7 @@ class SpotController(QObject):
                                                        download_filepath, 
                                                        client_metadata,
                                                        self.recording_client,
-                                                       self,self.graph_nav_client,
+                                                       self.graph_nav_client,
                                                        self.map_processing_client,
                                                         )
         self._record_worker = RecordWorker(self._recording_interface.start)

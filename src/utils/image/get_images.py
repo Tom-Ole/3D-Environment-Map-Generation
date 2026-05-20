@@ -147,7 +147,7 @@ def get_image(robot: Robot, image_client: ImageClient, robot_state_client: Robot
         raise e
 
 
-    base = Path(options.output_path)
+    base = Path(options.output_path) / "images"
     images_dir = base / "images"
     metadata_dir = base / "extra" / "metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)

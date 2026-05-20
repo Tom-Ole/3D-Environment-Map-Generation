@@ -162,6 +162,7 @@ class ContentArea(QWidget):
  
         def on_upload():
             if not self._selected_folder:
+                self.controller.error_signal.emit("No folder selected")
                 print("No folder selected")
                 return
             
@@ -234,8 +235,8 @@ class ContentArea(QWidget):
         ctrl.addWidget(QLabel("Save Folder:"))
         self._record_path_label = QLabel("No folder selected")
         self._record_path_label.setWordWrap(True)
-        self._record_path_label.setStyleSheet("color: #aaa; font-size: 11px;")
-        record_browse_btn = QPushButton("Browse…")
+        self._record_path_label.setStyleSheet("font-size: 11px;")
+        record_browse_btn = QPushButton("Browse...")
         ctrl.addWidget(record_browse_btn)
         ctrl.addWidget(self._record_path_label)
 
@@ -278,7 +279,13 @@ class ContentArea(QWidget):
         ctrl.addWidget(self._stop_btn)
         ctrl.addStretch()
 
-        self._record_selected_folder: str | None = None
+        self._record_selected_folder: None | str = None
+
+        default_path = str(self.controller.output_path)
+        self._record_selected_folder = default_path
+        display = default_path if len(default_path) <= 30 else "..." + default_path[-28:]
+        self._record_path_label.setText(display)
+        self._record_path_label.setToolTip(default_path) 
 
         def on_browse():
             folder = QFileDialog.getExistingDirectory(self, "Select Save Folder")

@@ -42,7 +42,8 @@ from bosdyn.client.robot_state import RobotStateClient
 class GraphNavInterface(object):
     """GraphNav service command line interface."""
 
-    def __init__(self, robot, upload_path, cmd_client, state_client, graph_nav_client, power_client, lease):
+
+    def __init__(self, robot, output_path, cmd_client, state_client, graph_nav_client, power_client, lease):
         self._robot = robot
 
         self._lease = lease
@@ -71,10 +72,8 @@ class GraphNavInterface(object):
         self._current_annotation_name_to_wp_id = dict()
 
         # Filepath for uploading a saved graph's and snapshots too.
-        if upload_path[-1] == '/':
-            self._upload_filepath = upload_path[:-1]
-        else:
-            self._upload_filepath = upload_path
+        self.output_path = output_path
+        self._upload_filepath = output_path
 
 
     def _set_initial_localization_fiducial(self, *args):
@@ -123,7 +122,7 @@ class GraphNavInterface(object):
         self._graph_nav_client.set_localization(
             initial_guess_localization=localization,
             # It's hard to get the pose perfect, search +/-20 deg and +/-20cm (0.2m).
-            max_distance=0.2,
+            max_distance=0.1,
             max_yaw=20.0 * math.pi / 180.0,
             fiducial_init=graph_nav_pb2.SetLocalizationRequest.FIDUCIAL_INIT_NO_FIDUCIAL,
             ko_tform_body=current_odom_tform_body)
@@ -246,7 +245,6 @@ class GraphNavInterface(object):
         """Navigate all waypoints in recording order, capturing images every n meters."""
 
         n: float = 0.1
-        output_dir = "./output_img"
 
         #  Ensure graph and edges are loaded
         # self._list_graph_waypoint_and_edge_ids()
@@ -258,7 +256,6 @@ class GraphNavInterface(object):
         #  Check localization 
         loc_state = self._graph_nav_client.get_localization_state()
         if not loc_state.localization.waypoint_id:
-            print('Robot is not localized. Use command (2) or (3) first.')
             return
 
         #  Get waypoints sorted by recording time 
@@ -269,7 +266,8 @@ class GraphNavInterface(object):
 
         #  Setup image capture 
         robot_image_client = self._robot.ensure_client('image')
-        image_options = ImageOptions(output_path=output_dir, 
+        image_dir = Path(self.output_path).parent
+        image_options = ImageOptions(output_path=str(image_dir), 
                                     #  sources=ImageSources.get_color() dont work I dont know why
                                     sources=[
                                         ImageSources.BACK_FISHEYE_IMAGE,
@@ -280,7 +278,7 @@ class GraphNavInterface(object):
                                     ]
                                      )
         image_options.side_tilt=True
-        sparse_dir = Path(output_dir) / "sparse" / "0"
+        sparse_dir = image_dir / "sparse" / "0"
         sparse_dir.mkdir(parents=True, exist_ok=True)
         colmap_writer = ColmapWriter(sparse_dir)
         frame_id = 0
@@ -298,6 +296,19 @@ class GraphNavInterface(object):
         loc = self._graph_nav_client.get_localization_state().localization
         last_capture_pos = loc.seed_tform_body.position
 
+        # velocity_limit = geometry_pb2.SE2VelocityLimit(
+        # max_vel=geometry_pb2.SE2Velocity(
+        #     linear=geometry_pb2.Vec2(x=self.NAVIGATE_SPEED_MS, y=1e6),
+        #     angular=1e6,
+        # ),
+        # min_vel=geometry_pb2.SE2Velocity(
+        #     linear=geometry_pb2.Vec2(x=-1e6, y=-1e6),
+        #     angular=-1e6,
+        #     ),
+        # )
+
+        # travel_params = graph_nav_pb2.TravelParams(velocity_limit=velocity_limit)
+
         #  Navigate waypoint by waypoint in recording order 
         for i, waypoint_id in enumerate(ordered_waypoint_ids):
             print(f'Navigating to waypoint {i + 1}/{len(ordered_waypoint_ids)}: {waypoint_id}')
@@ -308,7 +319,10 @@ class GraphNavInterface(object):
             while not is_finished:
                 try:
                     nav_to_cmd_id = self._graph_nav_client.navigate_to(
-                        waypoint_id, 1.0, command_id=nav_to_cmd_id)
+                        waypoint_id, 1.0, 
+                        command_id=nav_to_cmd_id, 
+                        #travel_params=travel_params
+                        )
                 except ResponseError as e:
                     print(f'Error while navigating to {waypoint_id}: {e}')
                     is_finished = True
@@ -329,7 +343,7 @@ class GraphNavInterface(object):
             if dist >= n:
                 print(f'  {dist:.2f}m traveled — capturing image (frame {frame_id:05d})...')
                 get_image(self._robot, robot_image_client, self._robot_state_client,
-                        image_options, f"{frame_id:05d}", colmap_writer, lease)
+                        image_options, f"{frame_id:05d}", colmap_writer, self._lease)
                 frame_id += 1
                 last_capture_pos = current_pos
             else:
@@ -427,6 +441,9 @@ class GraphNavInterface(object):
     def run(self):
         """Upload the graph, localize the robot, and navigate all waypoints while capturing images."""
         self._upload_graph_and_snapshots()
+
+        # stand up
+        # TODO: stand up
 
         try:
             self._set_initial_localization_fiducial()
