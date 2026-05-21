@@ -13,7 +13,7 @@ from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 from vtk.util import numpy_support
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 from bosdyn.api import geometry_pb2
 from bosdyn.api.graph_nav import map_pb2
@@ -279,6 +279,8 @@ class GraphNavWidget(QWidget):
         widget.load_map("/path/to/map_folder", anchoring=False, show_waypoint_text=True)
     """
 
+    load_failed = pyqtSignal(str)
+
     def __init__(self, parent=None, placeholder_text=None):
         super().__init__(parent)
 
@@ -303,8 +305,8 @@ class GraphNavWidget(QWidget):
             text = placeholder_text
     
         self._placeholder = QLabel(text)
+        self._placeholder.setObjectName("placeholderLabel")
         self._placeholder.setAlignment(Qt.AlignCenter)
-        self._placeholder.setStyleSheet("color: #888; font-size: 14px;")
         layout.addWidget(self._placeholder)
 
         self._placeholder.setVisible(True)
@@ -336,6 +338,7 @@ class GraphNavWidget(QWidget):
         except Exception as exc:
             print(f"[GraphNavWidget] Failed to load map: {exc}")
             self._placeholder.setText(f"Failed to load map:\n{exc}")
+            self.load_failed.emit(str(exc))
             return
 
         # Clear previous scene
@@ -376,6 +379,18 @@ class GraphNavWidget(QWidget):
         self._vtk_widget.setVisible(False)
         self._placeholder.setText("No map loaded.\nSelect a GraphNav folder and click Load.")
         self._placeholder.setVisible(True)
+
+    def cleanup_vtk(self):
+        try:
+            interactor = self._vtk_widget.GetRenderWindow().GetInteractor()
+            if interactor is not None:
+                interactor.TerminateApp()
+        except Exception:
+            pass
+        try:
+            self._vtk_widget.GetRenderWindow().Finalize()
+        except Exception:
+            pass
 
     def refresh(self, graph, waypoints: dict, snapshots: dict, *, show_waypoint_text: bool = True):
         """

@@ -38,12 +38,15 @@ from bosdyn.client.power import PowerClient, power_on_motors, safe_power_off_mot
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
 from bosdyn.client.robot_state import RobotStateClient
 
+logger = logging.getLogger(__name__)
+
 
 class GraphNavInterface(object):
     """GraphNav service command line interface."""
 
 
-    def __init__(self, robot, output_path, cmd_client, state_client, graph_nav_client, power_client, lease):
+    def __init__(self, robot, output_path, cmd_client, state_client, graph_nav_client, power_client, lease,
+                 capture_interval_m: float = 0.1):
         self._robot = robot
 
         self._lease = lease
@@ -74,6 +77,7 @@ class GraphNavInterface(object):
         # Filepath for uploading a saved graph's and snapshots too.
         self.output_path = output_path
         self._upload_filepath = output_path
+        self._capture_interval_m = capture_interval_m
 
 
     def _set_initial_localization_fiducial(self, *args):
@@ -242,27 +246,24 @@ class GraphNavInterface(object):
 
 
     def _my_navigate_route(self, *args):
-        """Navigate all waypoints in recording order, capturing images every n meters."""
+        """Navigate waypoints in recording order; capture at each waypoint by distance interval."""
 
-        n: float = 0.1
-
-        #  Ensure graph and edges are loaded
-        # self._list_graph_waypoint_and_edge_ids()
+        interval_m: float = self._capture_interval_m
 
         if not self._current_graph or not self._current_graph.waypoints:
-            print('No graph loaded or graph is empty.')
-            return
+            raise RuntimeError("No graph loaded or graph is empty.")
 
-        #  Check localization 
         loc_state = self._graph_nav_client.get_localization_state()
         if not loc_state.localization.waypoint_id:
-            return
+            raise RuntimeError("Robot is not localized to the map.")
 
-        #  Get waypoints sorted by recording time 
-        # sort_waypoints_chrono returns list of (waypoint_id, timestamp, annotation_name)
         ordered_waypoints = graph_nav_util.sort_waypoints_chrono(self._current_graph)
         ordered_waypoint_ids = [wp[0] for wp in ordered_waypoints]
-        print(f'Built route of {len(ordered_waypoint_ids)} waypoints in recording order.')
+        logger.info(
+            "Built route of %d waypoints in recording order (capture interval=%.2fm).",
+            len(ordered_waypoint_ids),
+            interval_m,
+        )
 
         #  Setup image capture 
         robot_image_client = self._robot.ensure_client('image')
@@ -284,11 +285,9 @@ class GraphNavInterface(object):
         frame_id = 0
 
         if not self.toggle_power(should_power_on=True):
-            print('Failed to power on the robot.')
-            return
+            raise RuntimeError("Failed to power on the robot.")
 
-        #  Capture image at starting position 
-        print(f'Capturing initial image (frame {frame_id:05d})...')
+        logger.info("Capturing initial image (frame %05d)...", frame_id)
         get_image(self._robot, robot_image_client, self._robot_state_client,
                 image_options, f"{frame_id:05d}", colmap_writer, self._lease)
         frame_id += 1
@@ -311,7 +310,12 @@ class GraphNavInterface(object):
 
         #  Navigate waypoint by waypoint in recording order 
         for i, waypoint_id in enumerate(ordered_waypoint_ids):
-            print(f'Navigating to waypoint {i + 1}/{len(ordered_waypoint_ids)}: {waypoint_id}')
+            logger.info(
+                "Navigating to waypoint %d/%d: %s",
+                i + 1,
+                len(ordered_waypoint_ids),
+                waypoint_id,
+            )
 
             nav_to_cmd_id = None
             is_finished = False
@@ -324,9 +328,8 @@ class GraphNavInterface(object):
                         #travel_params=travel_params
                         )
                 except ResponseError as e:
-                    print(f'Error while navigating to {waypoint_id}: {e}')
-                    is_finished = True
-                    break
+                    logger.error("Error while navigating to %s: %s", waypoint_id, e)
+                    raise RuntimeError(f"Navigation failed at waypoint {waypoint_id}: {e}") from e
 
                 time.sleep(0.5)
                 is_finished = self._check_success(nav_to_cmd_id)
@@ -340,16 +343,27 @@ class GraphNavInterface(object):
                 (current_pos.y - last_capture_pos.y) ** 2
             )
 
-            if dist >= n:
-                print(f'  {dist:.2f}m traveled — capturing image (frame {frame_id:05d})...')
+            should_capture = interval_m == 0.0 or dist >= interval_m
+            if should_capture:
+                logger.info(
+                    "Capturing at waypoint %s (%.2fm from last, frame %05d).",
+                    waypoint_id,
+                    dist,
+                    frame_id,
+                )
                 get_image(self._robot, robot_image_client, self._robot_state_client,
                         image_options, f"{frame_id:05d}", colmap_writer, self._lease)
                 frame_id += 1
                 last_capture_pos = current_pos
             else:
-                print(f'  {dist:.2f}m since last capture — skipping.')
+                logger.info(
+                    "Skipping capture at waypoint %s (%.2fm from last, interval %.2fm).",
+                    waypoint_id,
+                    dist,
+                    interval_m,
+                )
 
-        print(f'Route complete. Captured {frame_id} image(s) total.')
+        logger.info("Route complete. Captured %d image(s) total.", frame_id)
 
         if self._powered_on and not self._started_powered_on:
             self.toggle_power(should_power_on=False)
@@ -406,14 +420,11 @@ class GraphNavInterface(object):
             # Successfully completed the navigation commands!
             return True
         elif status.status == graph_nav_pb2.NavigationFeedbackResponse.STATUS_LOST:
-            print('Robot got lost when navigating the route, the robot will now sit down.')
-            return True
+            raise RuntimeError("Robot got lost when navigating the route.")
         elif status.status == graph_nav_pb2.NavigationFeedbackResponse.STATUS_STUCK:
-            print('Robot got stuck when navigating the route, the robot will now sit down.')
-            return True
+            raise RuntimeError("Robot got stuck when navigating the route.")
         elif status.status == graph_nav_pb2.NavigationFeedbackResponse.STATUS_ROBOT_IMPAIRED:
-            print('Robot is impaired.')
-            return True
+            raise RuntimeError("Robot is impaired and cannot continue navigation.")
         else:
             # Navigation command is not complete yet.
             return False

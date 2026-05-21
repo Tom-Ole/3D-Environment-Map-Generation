@@ -1,5 +1,6 @@
 import cv2 # Fixes "ImportError: libGL.so.1: cannot open shared object file: No such file or directory" on some Linux distros
 
+import logging
 import sys
 import argparse
 
@@ -49,6 +50,10 @@ def login_prompt():
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
 
     app = QApplication(sys.argv)
 
@@ -59,21 +64,24 @@ def main():
         with open("styles/style.qss", "r") as f:
             app.setStyleSheet(f.read())
     except FileNotFoundError:
-        with open("src/styles/style.qss", "r") as f:
-            app.setStyleSheet(f.read())
+        try:
+            with open("src/styles/style.qss", "r") as f:
+                app.setStyleSheet(f.read())
+        except FileNotFoundError:
+            pass
 
 
     if(not options.isSim):
         sdk = bosdyn.client.create_standard_sdk("auto_3D")
         robot = sdk.create_robot(options.hostname)
         bosdyn.client.util.authenticate(robot, askpass=login_prompt)
-        controller = SpotController(robot)
+        controller = SpotController(robot, hostname=options.hostname)
     else:
-        #print(login_prompt())
         controller = SimSpotController()
     
 
-    window = MainWindow(controller)
+    hostname = "" if options.isSim else options.hostname
+    window = MainWindow(controller, hostname=hostname)
     window.show()
 
     sys.exit(app.exec_())

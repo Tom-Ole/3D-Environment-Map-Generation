@@ -5,9 +5,12 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 """Command line interface integrating options to record maps with WASD controls. """
+import logging
 import datetime
 import os
 import time
+
+logger = logging.getLogger(__name__)
 
 
 import utils.route.graph_nav_util as graph_nav_util
@@ -77,38 +80,35 @@ class RecordingInterface(object):
 
     def _start_recording(self, *args):
         """Start recording a map."""
-        should_start_recording = self.should_we_start_recording()
-        if not should_start_recording:
-            print('The system is not in the proper state to start recording.'
-                  'Try using the graph_nav_command_line to either clear the map or'
-                  'attempt to localize to the map.')
-            return
+        if not self.should_we_start_recording():
+            raise RuntimeError(
+                "Cannot start recording: localize to the map or clear the graph first."
+            )
         try:
-            status = self._recording_client.start_recording(
+            self._recording_client.start_recording(
                 recording_environment=self._recording_environment)
-            print('Successfully started recording a map.')
+            logger.info("Successfully started recording a map.")
         except Exception as err:
-            print(f'Start recording failed: {err}')
+            logger.error("Start recording failed: %s", err)
+            raise
 
     def _stop_recording(self, *args):
         """Stop or pause recording a map."""
         first_iter = True
         while True:
             try:
-                status = self._recording_client.stop_recording()
-                print('Successfully stopped recording a map.')
+                self._recording_client.stop_recording()
+                logger.info("Successfully stopped recording a map.")
                 break
-            except NotReadyYetError as err:
-                # It is possible that we are not finished recording yet due to
-                # background processing. Try again every 1 second.
+            except NotReadyYetError:
                 if first_iter:
-                    print('Cleaning up recording...')
+                    logger.info("Cleaning up recording...")
                 first_iter = False
                 time.sleep(1.0)
                 continue
             except Exception as err:
-                print(f'Stop recording failed: {err}')
-                break
+                logger.error("Stop recording failed: %s", err)
+                raise
 
     def _get_recording_status(self, *args):
         """Get the recording service's status."""
@@ -122,19 +122,21 @@ class RecordingInterface(object):
         """Create a default waypoint at the robot's current location."""
         resp = self._recording_client.create_waypoint(waypoint_name='default')
         if resp.status == recording_pb2.CreateWaypointResponse.STATUS_OK:
-            print('Successfully created a waypoint.')
+            logger.info("Successfully created a waypoint.")
         else:
-            print('Could not create a waypoint.')
+            raise RuntimeError(f"Could not create a waypoint (status={resp.status}).")
 
     def _download_full_graph(self, *args):
         """Download the graph and snapshots from the robot."""
         graph = self._graph_nav_client.download_graph()
         if graph is None:
-            print('Failed to download the graph.')
-            return
+            raise RuntimeError("Failed to download the graph from the robot.")
         self._write_full_graph(graph)
-        print(
-            f'Graph downloaded with {len(graph.waypoints)} waypoints and {len(graph.edges)} edges')
+        logger.info(
+            "Graph downloaded with %d waypoints and %d edges",
+            len(graph.waypoints),
+            len(graph.edges),
+        )
         # Download the waypoint and edge snapshots.
         self._download_and_write_waypoint_snapshots(graph.waypoints)
         self._download_and_write_edge_snapshots(graph.edges)
@@ -254,10 +256,10 @@ class RecordingInterface(object):
         self._update_graph_waypoint_and_edge_ids(do_print=False)
 
         if len(self._current_graph.waypoints) < 2:
-            self._add_message(
-                f'Graph contains {len(self._current_graph.waypoints)} waypoints -- at least two are '
-                f'needed to create loop.')
-            return False
+            raise RuntimeError(
+                f"Graph contains {len(self._current_graph.waypoints)} waypoints; "
+                "at least two are needed to create a loop."
+            )
 
         sorted_waypoints = graph_nav_util.sort_waypoints_chrono(self._current_graph)
         edge_waypoints = [sorted_waypoints[-1][0], sorted_waypoints[0][0]]

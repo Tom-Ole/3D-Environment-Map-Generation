@@ -1,24 +1,78 @@
+from datetime import datetime
+from pathlib import Path
 from typing import Callable, Tuple
+
 from PyQt5.QtCore import QObject, pyqtSignal
+
+from utils.controller.spot_controller import remove_path_if_empty
+from utils.controller.robot_status import RobotStatusSnapshot, format_status_text
+from utils.controller.errors import report_error as _emit_error
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SimSpotController(QObject):
     error_signal = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, output_path: str = "./output", hostname: str = ""):
         super().__init__()
         self.has_lease = False
+        self.is_estop = False
         self.robot = None
         self.graph_nav_client = None
         self._recording = False
+        self.hostname = hostname or "(simulation)"
+        self.is_executing_route = False
+
+        self.output_path = Path(output_path) / datetime.now().strftime("%Y%m%d_%H_%M%S")
+        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.image_output_path = self.output_path / "images"
+
+    def cleanup(self):
+        if self.is_estop:
+            self.release()
+        if self.has_lease:
+            self.release_lease()
+        remove_path_if_empty(self.output_path)
+
+    def report_error(self, message: str, exc: BaseException | None = None) -> None:
+        _emit_error(self.error_signal, message, exc)
 
     # ESTOP
 
     def estop(self):
+        self.is_estop = True
         print("Estop")
 
     def release(self):
+        self.is_estop = False
         print("Release")
+
+    def get_status_snapshot(self) -> RobotStatusSnapshot:
+        lines = [
+            "Mode: Simulation",
+            f"Session: {self.output_path.name}",
+            f"ESTOP: {'Active' if self.is_estop else 'Released'}",
+            f"Lease: {'Held' if self.has_lease else 'Not held'}",
+            f"Recording: {'In progress' if self._recording else 'Idle'}",
+            f"Route: {'Executing' if self.is_executing_route else 'Idle'}",
+            "Motors: N/A (sim)",
+        ]
+        return RobotStatusSnapshot(
+            hostname=self.hostname,
+            connected=True,
+            battery_percent=None,
+            motor_power="Simulation",
+            estop_active=self.is_estop,
+            lease_held=self.has_lease,
+            recording=self._recording,
+            session_path=str(self.output_path),
+            lines=lines,
+        )
+
+    def format_status_text(self) -> str:
+        return format_status_text(self.get_status_snapshot())
 
     # GET_IMAGE
 
@@ -49,9 +103,19 @@ class SimSpotController(QObject):
 
     # EXECUTE ROUTE
 
-    def execute_route(self, path: str) -> Callable:
-        print(f"[Sim] Executing predefined route [{path}]...")
-        return lambda: print(f"[Sim] Cleared graph for route [{path}]")
+    def execute_route(self, path: str, capture_interval_m: float = 0.1) -> Callable:
+        logger.info(
+            "[Sim] Executing route [%s] (interval=%.2fm)", path, capture_interval_m
+        )
+        self.is_executing_route = True
+        self.has_lease = True
+
+        def clear_fn():
+            logger.info("[Sim] Cleared graph for route [%s]", path)
+            self.has_lease = False
+            self.is_executing_route = False
+
+        return clear_fn
 
     # MANUAL RUN
 
@@ -78,10 +142,6 @@ class SimSpotController(QObject):
         print("[Sim] Getting Point Cloud and route graph...")
 
     # LEASE
-
-    def take_lease(self):
-        self.has_lease = True
-        print("[Sim] Lease taken")
 
     def release_lease(self):
         self.has_lease = False
