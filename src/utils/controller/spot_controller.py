@@ -25,6 +25,8 @@ from utils.worker.record_worker import RecordWorker
 from utils.controller.robot_status import RobotStatusSnapshot, format_status_text
 from utils.controller.errors import report_error as _emit_error
 
+from utils.preprocess.mask import Preprocessor
+
 from bosdyn.api import robot_state_pb2
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,7 @@ class SpotController(QObject):
 
     # Errror 
     error_signal = pyqtSignal(str)
+
 
     def __init__(self, robot: Robot, output_path="./output", hostname: str = ""):
         super().__init__()
@@ -122,6 +125,10 @@ class SpotController(QObject):
         # Record route
         self._recording_interface = None
         self._record_worker = None
+
+        # Preprocessor
+        self.preprocessor = Preprocessor()
+
 
     def cleanup(self):
         if self.is_estop:
@@ -346,3 +353,8 @@ class SpotController(QObject):
                 logger.warning("Failed to return lease: %s", e)
         self.has_lease = False
     
+    # Preprocessor
+
+    def create_masks(self, input_path: str, output_path: str, classes: list[int] = [0]):
+        """Create masks for the captured images using the Preprocessor."""
+        self.preprocessor.create_masks(input_path, output_path, classes)
