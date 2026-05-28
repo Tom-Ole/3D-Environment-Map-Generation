@@ -137,8 +137,8 @@ class SpotController(QObject):
             self.release_lease()
         try:
             self.estop_keep_alive.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to shutdown estop keep-alive: %s", e)
         remove_path_if_empty(Path(self.output_path))
 
     def report_error(self, message: str, exc: BaseException | None = None) -> None:
@@ -203,6 +203,7 @@ class SpotController(QObject):
         except Exception as e:
             snapshot.connected = False
             lines.append(f"Robot state: unavailable ({e})")
+            self.report_error(f"Failed to fetch robot state: {e}", e)
 
         snapshot.lines = lines
         return snapshot
@@ -214,9 +215,12 @@ class SpotController(QObject):
 
     def get_image(self, save = True):
         """ Capture an image from the robot's cameras and save them to a specified location for later processing and 3D reconstruction """
-        create_check_path(self.image_output_path)
-        
-        logger.info("Capturing image from robot's camera...")
+        try:
+            create_check_path(self.image_output_path)
+            logger.info("Capturing image from robot's camera...")
+        except Exception as e:
+            self.report_error(f"Failed to capture image: {e}", e)
+            raise
 
 
 
@@ -345,12 +349,14 @@ class SpotController(QObject):
                 self._lease_keep_alive.return_lease()
             except Exception as e:
                 logger.warning("Failed to return lease via keep-alive: %s", e)
+                self.report_error(f"Failed to return lease via keep-alive: {e}", e)
             self._lease_keep_alive = None
         else:
             try:
                 self.lease_client.return_lease()
             except Exception as e:
                 logger.warning("Failed to return lease: %s", e)
+                self.report_error(f"Failed to return lease: {e}", e)
         self.has_lease = False
     
     # Preprocessor

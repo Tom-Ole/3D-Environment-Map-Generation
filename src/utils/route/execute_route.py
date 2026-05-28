@@ -171,8 +171,8 @@ class GraphNavInterface(object):
             self._graph_nav_client.upload_snapshots(
                 graph_nav_pb2.UploadSnapshotsRequest.Snapshots(waypoint_snapshots=[],
                                                                edge_snapshots=[]))
-        except:
-            # An empty UploadSnapshots request failed, fall back to slow RPC.
+        except Exception as e:
+            logger.warning("Empty UploadSnapshots request failed, falling back to individual uploads: %s", e)
             upload_individually = True
 
         if upload_individually:
@@ -458,7 +458,8 @@ class GraphNavInterface(object):
 
         try:
             self._set_initial_localization_fiducial()
-        except Exception:
+        except Exception as e:
+            logger.warning("Fiducial localization failed, falling back to waypoint localization: %s", e)
             self._set_initial_localization_waypoint([self._current_graph.waypoints[0].id])
 
         self._my_navigate_route()

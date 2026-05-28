@@ -155,9 +155,8 @@ class RecordingInterface(object):
             try:
                 waypoint_snapshot = self._graph_nav_client.download_waypoint_snapshot(
                     waypoint.snapshot_id)
-            except Exception:
-                # Failure in downloading waypoint snapshot. Continue to next snapshot.
-                print(f'Failed to download waypoint snapshot: {waypoint.snapshot_id}')
+            except Exception as e:
+                logger.warning(f'Failed to download waypoint snapshot {waypoint.snapshot_id}: {e}')
                 continue
             self._write_bytes(os.path.join(self._download_filepath, 'waypoint_snapshots'),
                               str(waypoint.snapshot_id), waypoint_snapshot.SerializeToString())
@@ -176,9 +175,8 @@ class RecordingInterface(object):
             num_to_download += 1
             try:
                 edge_snapshot = self._graph_nav_client.download_edge_snapshot(edge.snapshot_id)
-            except Exception:
-                # Failure in downloading edge snapshot. Continue to next snapshot.
-                print(f'Failed to download edge snapshot: {edge.snapshot_id}')
+            except Exception as e:
+                logger.warning(f'Failed to download edge snapshot {edge.snapshot_id}: {e}')
                 continue
             self._write_bytes(os.path.join(self._download_filepath, 'edge_snapshots'),
                               str(edge.snapshot_id), edge_snapshot.SerializeToString())

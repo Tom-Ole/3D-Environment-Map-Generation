@@ -32,75 +32,95 @@ class Preprocessor:
         return class_ids
 
     def create_masks(self, input_path: str, output_path: str, classes: list[int] = [0]):
+        try:
+            os.makedirs(output_path, exist_ok=True)
 
-        os.makedirs(output_path, exist_ok=True)
+            all_files_name = os.listdir(input_path)
+            all_files = [os.path.join(input_path, f) for f in all_files_name if f.endswith(('.jpg', '.png'))]
 
-        # get all file name in the input path
-        all_files_name = os.listdir(input_path)
-        all_files = [os.path.join(input_path, f) for f in all_files_name if f.endswith(('.jpg', '.png'))]
+            if not all_files:
+                logger.warning(f"No image files found in {input_path}")
+                return
 
-        results = self.model(all_files, classes=classes)
+            results = self.model(all_files, classes=classes)
 
-        c = 0
-        for result in results:
+            c = 0
+            for result in results:
+                try:
+                    base_name = os.path.splitext(all_files_name[c])[0]
+                    file_name_path = os.path.join(output_path, f"{base_name}_mask.png")
 
-            base_name = os.path.splitext(all_files_name[c])[0]
-            file_name_path = os.path.join(output_path, f"{base_name}_mask.png")
+                    masks = result.masks
 
-            masks = result.masks
+                    if masks is not None:
+                        combined = masks.data.any(dim=0).cpu().numpy()
 
-            if masks is not None:
-                combined = masks.data.any(dim=0).cpu().numpy()
+                        orig_h, orig_w = result.orig_shape
+                        mask_img = Image.fromarray((combined * 255).astype(np.uint8), mode="L")
+                        mask_img = mask_img.resize((orig_w, orig_h), Image.NEAREST)
 
-                orig_h, orig_w = result.orig_shape
-                mask_img = Image.fromarray((combined * 255).astype(np.uint8), mode="L")
-                mask_img = mask_img.resize((orig_w, orig_h), Image.NEAREST)
+                        mask_img.save(file_name_path)
+                        logger.info(f"Saved mask for {all_files_name[c]} at {file_name_path}")
+                    else:
+                        orig_h, orig_w = result.orig_shape
+                        blank = Image.fromarray(np.zeros((orig_h, orig_w), dtype=np.uint8), mode="L")
+                        blank.save(file_name_path)
+                        logger.info(f"No masks found for {all_files_name[c]}. Saved blank mask at {file_name_path}")
 
-                mask_img.save(file_name_path)
-                logger.info(f"Saved mask for {all_files_name[c]} at {file_name_path}") # TODO: propagate to GUI
-            else:
-                orig_h, orig_w = result.orig_shape
-                blank = Image.fromarray(np.zeros((orig_h, orig_w), dtype=np.uint8), mode="L")
-                blank.save(file_name_path)
-                logger.info(f"No masks found for {all_files_name[c]}. Saved blank mask at {file_name_path}") # TODO: propagate to GUI
-
-            c += 1
+                    c += 1
+                except Exception as e:
+                    logger.error(f"Failed to process {all_files_name[c]}: {e}")
+                    c += 1
+                    continue
+        except Exception as e:
+            logger.error(f"Failed to create masks: {e}")
+            raise
 
 
     def create_masks_recursive(self, input_path: str, output_path: str, classes: list[int] = [0]):
-        
-        output_path = output_path + "/masks"
-        
-        for root, dirs, files in os.walk(input_path):
-            image_files = [f for f in files if f.endswith(('.jpg', '.png'))]
-            if not image_files:
-                continue
+        try:
+            output_path = output_path + "/masks"
+            
+            for root, dirs, files in os.walk(input_path):
+                image_files = [f for f in files if f.endswith(('.jpg', '.png'))]
+                if not image_files:
+                    continue
 
-            # Build the mirrored output subdirectory
-            relative = os.path.relpath(root, input_path)
-            current_output_path = os.path.join(output_path, relative)
-            os.makedirs(current_output_path, exist_ok=True)
+                try:
+                    relative = os.path.relpath(root, input_path)
+                    current_output_path = os.path.join(output_path, relative)
+                    os.makedirs(current_output_path, exist_ok=True)
 
-            all_files = [os.path.join(root, f) for f in image_files]
-            results = self.model(all_files, classes=classes)
+                    all_files = [os.path.join(root, f) for f in image_files]
+                    results = self.model(all_files, classes=classes)
 
-            for i, result in enumerate(results):
-                base_name = os.path.splitext(image_files[i])[0]
-                file_name_path = os.path.join(current_output_path, f"{base_name}_mask.png")
+                    for i, result in enumerate(results):
+                        try:
+                            base_name = os.path.splitext(image_files[i])[0]
+                            file_name_path = os.path.join(current_output_path, f"{base_name}_mask.png")
 
-                masks = result.masks
-                orig_h, orig_w = result.orig_shape
+                            masks = result.masks
+                            orig_h, orig_w = result.orig_shape
 
-                if masks is not None:
-                    combined = masks.data.any(dim=0).cpu().numpy()
-                    mask_img = Image.fromarray((combined * 255).astype(np.uint8), mode="L")
-                    mask_img = mask_img.resize((orig_w, orig_h), Image.NEAREST)
-                    mask_img.save(file_name_path)
-                    logger.info(f"Saved mask for {image_files[i]} at {file_name_path}")
-                else:
-                    blank = Image.fromarray(np.zeros((orig_h, orig_w), dtype=np.uint8), mode="L")
-                    blank.save(file_name_path)
-                    logger.info(f"No masks found for {image_files[i]}. Saved blank mask at {file_name_path}")
+                            if masks is not None:
+                                combined = masks.data.any(dim=0).cpu().numpy()
+                                mask_img = Image.fromarray((combined * 255).astype(np.uint8), mode="L")
+                                mask_img = mask_img.resize((orig_w, orig_h), Image.NEAREST)
+                                mask_img.save(file_name_path)
+                                logger.info(f"Saved mask for {image_files[i]} at {file_name_path}")
+                            else:
+                                blank = Image.fromarray(np.zeros((orig_h, orig_w), dtype=np.uint8), mode="L")
+                                blank.save(file_name_path)
+                                logger.info(f"No masks found for {image_files[i]}. Saved blank mask at {file_name_path}")
+                        except Exception as e:
+                            logger.error(f"Failed to process {image_files[i]}: {e}")
+                            continue
+                except Exception as e:
+                    logger.error(f"Failed to process directory {root}: {e}")
+                    continue
+        except Exception as e:
+            logger.error(f"Failed to create masks recursively: {e}")
+            raise
 
 
 
