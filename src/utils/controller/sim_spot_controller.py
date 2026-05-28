@@ -9,6 +9,8 @@ from utils.controller.robot_status import RobotStatusSnapshot, format_status_tex
 from utils.controller.errors import report_error as _emit_error
 import logging
 
+from utils.preprocess.mask import Preprocessor
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,8 @@ class SimSpotController(QObject):
         self.output_path = Path(output_path) / datetime.now().strftime("%Y%m%d_%H_%M%S")
         self.output_path.mkdir(parents=True, exist_ok=True)
         self.image_output_path = self.output_path / "images"
+
+        self.preprocessor = Preprocessor()
 
     def cleanup(self):
         if self.is_estop:
@@ -146,3 +150,11 @@ class SimSpotController(QObject):
     def release_lease(self):
         self.has_lease = False
         print("[Sim] Lease released")
+
+    # PREPROCESSING
+    def create_masks(self, input_path: str, output_path: str, classes: list[int] = [0]):
+        """Create masks for the captured images using the Preprocessor."""
+        self.preprocessor.create_masks(input_path, output_path, classes)
+
+    def create_masks_recursive(self, input_path: str, output_path: str, classes: list[int] = [0]):
+        self.preprocessor.create_masks_recursive(input_path, output_path, classes)

@@ -358,3 +358,6 @@ class SpotController(QObject):
     def create_masks(self, input_path: str, output_path: str, classes: list[int] = [0]):
         """Create masks for the captured images using the Preprocessor."""
         self.preprocessor.create_masks(input_path, output_path, classes)
+
+    def create_masks_recursive(self, input_path: str, output_path: str, classes: list[int] = [0]):
+        self.preprocessor.create_masks_recursive(input_path, output_path, classes)
