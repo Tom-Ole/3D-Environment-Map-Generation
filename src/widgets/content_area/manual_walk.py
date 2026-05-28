@@ -72,19 +72,34 @@ class ManualWalkPanel(QWidget):
         self.controller.report_error(message)
 
     def _on_capture(self):
-        pass
+        try:
+            self.controller.manual_capture()
+        except Exception:
+            pass
 
     def _on_start(self):
+        self.controller.start_manual_run(
+            distance_interval_m=self._interval_spin.value(),
+            on_finished=self._on_start_finished,
+            on_error=self._on_worker_error,
+        )
         self._start_btn.setEnabled(False)
         self._capture_btn.setEnabled(True)
         self._stop_btn.setEnabled(True)
         self._interval_spin.setEnabled(False)
 
-    def _on_stop(self):
+    def _on_start_finished(self):
         self._start_btn.setEnabled(True)
         self._capture_btn.setEnabled(False)
         self._stop_btn.setEnabled(False)
         self._interval_spin.setEnabled(True)
+
+    def _on_stop(self):
+        self.controller.stop_manual_run(on_finished=self._on_start_finished)
+
+    def _on_worker_error(self, exc: Exception):
+        self.controller.report_error(str(exc), exc)
+        self._on_start_finished()
 
     def cleanup(self):
         self.graph_widget.cleanup_vtk()

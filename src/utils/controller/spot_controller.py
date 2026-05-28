@@ -22,6 +22,7 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 from utils.route.record_route import RecordingInterface
 from utils.worker.record_worker import RecordWorker
+from utils.worker.manual_walk_worker import ManualWalkWorker
 from utils.controller.robot_status import RobotStatusSnapshot, format_status_text
 from utils.controller.errors import report_error as _emit_error
 
@@ -125,6 +126,9 @@ class SpotController(QObject):
         # Record route
         self._recording_interface = None
         self._record_worker = None
+
+        # Manual walk
+        self._manual_walk_worker = None
 
         # Preprocessor
         self.preprocessor = Preprocessor()
@@ -294,9 +298,35 @@ class SpotController(QObject):
 
     # MANUAL RUN
 
-    def manual_run(self):
-        """Allows to run the Roboter manually while taking the pictures"""
-        print("Manual Controll the robot while he tries to take the Pics...")
+    def start_manual_run(self, distance_interval_m: float = 1.0, on_finished: Callable = None, on_error: Callable = None):
+        """Start manual walk with distance-based image capture."""
+        if self._manual_walk_worker is not None and self._manual_walk_worker.isRunning():
+            self.report_error("Manual walk is already running.")
+            return
+
+        self._manual_walk_worker = ManualWalkWorker(self, distance_interval_m)
+        if on_finished:
+            self._manual_walk_worker.finished.connect(on_finished)
+        if on_error:
+            self._manual_walk_worker.error.connect(on_error)
+        self._manual_walk_worker.start()
+
+    def stop_manual_run(self, on_finished: Callable = None):
+        """Stop manual walk."""
+        if self._manual_walk_worker is None or not self._manual_walk_worker.isRunning():
+            return
+
+        self._manual_walk_worker.stop()
+        if on_finished:
+            self._manual_walk_worker.finished.connect(on_finished)
+
+    def manual_capture(self):
+        """Manually trigger image capture."""
+        try:
+            self.get_image(save=True)
+        except Exception as e:
+            self.report_error(f"Failed to capture image: {e}", e)
+            raise
 
     # AUTO RUN
 

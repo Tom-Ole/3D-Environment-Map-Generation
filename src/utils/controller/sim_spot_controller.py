@@ -123,8 +123,18 @@ class SimSpotController(QObject):
 
     # MANUAL RUN
 
-    def manual_run(self):
-        print("[Sim] Manual control...")
+    def start_manual_run(self, distance_interval_m: float = 1.0, on_finished: Callable = None, on_error: Callable = None):
+        print(f"[Sim] Starting manual walk with interval: {distance_interval_m}m")
+        if on_finished:
+            on_finished()
+
+    def stop_manual_run(self, on_finished: Callable = None):
+        print("[Sim] Stopping manual walk")
+        if on_finished:
+            on_finished()
+
+    def manual_capture(self):
+        print("[Sim] Manual image capture")
 
     # AUTO RUN
 
