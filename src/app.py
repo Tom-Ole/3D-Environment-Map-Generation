@@ -1,4 +1,5 @@
-#import cv2 # Fixes "ImportError: libGL.so.1: cannot open shared object file: No such file or directory" on some Linux distros
+#import cv2 # Can Fix: "ImportError: libGL.so.1: cannot open shared object file: No such file or directory" on some Linux distros
+import torch # Can Fix: "OSError: [WinError 1114] Eine DLL-Initialisierungsroutine ist fehlgeschlagen. Error loading '...\Lib\site-packages\torch\lib\c10.dll' or one of its dependencies."
 
 import logging
 import sys
