@@ -30,6 +30,12 @@ from utils.preprocess.mask import Preprocessor
 
 from bosdyn.api import robot_state_pb2
 
+from utils.route.manual_walk import ManualWalkInterface
+
+from utils.image.get_images import get_image
+from utils.image.colmap_writer import ColmapWriter
+from utils.image.ImageOptions import ImageOptions, ImageSources
+
 logger = logging.getLogger(__name__)
 
 _MOTOR_POWER_LABELS = {
@@ -130,6 +136,24 @@ class SpotController(QObject):
         # Manual walk
         self._manual_walk_worker = None
 
+        # Get Image
+        image_dir = Path(self.output_path)
+        self.image_options = ImageOptions(output_path=str(image_dir), 
+                                    #  sources=ImageSources.get_color() dont work I dont know why
+                                    sources=[
+                                        ImageSources.BACK_FISHEYE_IMAGE,
+                                        ImageSources.FRONTLEFT_FISHEYE_IMAGE,
+                                        ImageSources.FRONTRIGHT_FISHEYE_IMAGE,
+                                        ImageSources.LEFT_FISHEYE_IMAGE,
+                                        ImageSources.RIGHT_FISHEYE_IMAGE,
+                                    ]
+                                     )
+        self.image_options.side_tilt=False
+
+        sparse_dir = image_dir / "images" / "sparse" / "0"
+        sparse_dir.mkdir(parents=True, exist_ok=True)
+        self.colmap_writer = ColmapWriter(sparse_dir)
+
         # Preprocessor
         self.preprocessor = Preprocessor()
 
@@ -143,15 +167,14 @@ class SpotController(QObject):
             self.estop_keep_alive.shutdown()
         except Exception as e:
             logger.warning("Failed to shutdown estop keep-alive: %s", e)
+        finally:
+            self._save_and_reset_colmap()
         remove_path_if_empty(Path(self.output_path))
 
     def report_error(self, message: str, exc: BaseException | None = None) -> None:
         _emit_error(self.error_signal, message, exc)
 
     # ESTOP
-
-    def _setup_estop(self):
-        pass
 
     def estop(self):
         self.estop_keep_alive.stop()
@@ -187,7 +210,25 @@ class SpotController(QObject):
             state = self.robot_state_client.get_robot_state()
             snapshot.connected = True
 
-            charge = state.battery_state.charge_percentage
+            """
+            Just some notes from the print (could be nice to know, doesnt need to)
+            behavior_state { state: }
+            estop_states
+            battery_states: {
+            identifier:
+            charge_percentage: {
+                value: 
+                }
+            status: 
+            robot_power_state
+            }
+            power_state: {
+            motor_power_state: 
+            }
+            """
+
+
+            charge = state.battery_states[0].charge_percentage
             if charge and charge.value > 0:
                 pct = charge.value
                 snapshot.battery_percent = pct * 100 if pct <= 1.0 else pct
@@ -215,16 +256,6 @@ class SpotController(QObject):
     def format_status_text(self) -> str:
         return format_status_text(self.get_status_snapshot())
 
-    # GET_IMAGE
-
-    def get_image(self, save = True):
-        """ Capture an image from the robot's cameras and save them to a specified location for later processing and 3D reconstruction """
-        try:
-            create_check_path(self.image_output_path)
-            logger.info("Capturing image from robot's camera...")
-        except Exception as e:
-            self.report_error(f"Failed to capture image: {e}", e)
-            raise
 
 
 
@@ -270,12 +301,8 @@ class SpotController(QObject):
                 self._lease_keep_alive = lease_keepalive
                 self.has_lease = True
                 interface = GraphNavInterface(
-                                            self.robot, 
+                                            self, 
                                             path, 
-                                            self.command_client, 
-                                            self.robot_state_client, 
-                                            self.graph_nav_client, 
-                                            self.power_client,
                                             lease_keepalive,
                                             capture_interval_m=capture_interval_m,
                                             )
@@ -292,41 +319,39 @@ class SpotController(QObject):
             self._lease_keep_alive = None
             self.has_lease = False
             self.is_executing_route = False
+            self._save_and_reset_colmap()
 
       
 
 
     # MANUAL RUN
 
-    def start_manual_run(self, distance_interval_m: float = 1.0, on_finished: Callable = None, on_error: Callable = None):
-        """Start manual walk with distance-based image capture."""
+    def start_manual_run(self, distance_interval_m: float = 1.0, on_finished=None, on_error=None):
         if self._manual_walk_worker is not None and self._manual_walk_worker.isRunning():
             self.report_error("Manual walk is already running.")
             return
 
-        self._manual_walk_worker = ManualWalkWorker(self, distance_interval_m)
+        interface = ManualWalkInterface(self)
+        self._manual_walk_worker = ManualWalkWorker(interface, distance_interval_m)
         if on_finished:
             self._manual_walk_worker.finished.connect(on_finished)
         if on_error:
             self._manual_walk_worker.error.connect(on_error)
         self._manual_walk_worker.start()
 
-    def stop_manual_run(self, on_finished: Callable = None):
-        """Stop manual walk."""
+    def stop_manual_run(self, on_finished=None):
         if self._manual_walk_worker is None or not self._manual_walk_worker.isRunning():
             return
-
         self._manual_walk_worker.stop()
         if on_finished:
             self._manual_walk_worker.finished.connect(on_finished)
+        
+        self._save_and_reset_colmap()
 
     def manual_capture(self):
         """Manually trigger image capture."""
-        try:
-            self.get_image(save=True)
-        except Exception as e:
-            self.report_error(f"Failed to capture image: {e}", e)
-            raise
+        # TODO
+        pass
 
     # AUTO RUN
 
@@ -369,6 +394,31 @@ class SpotController(QObject):
         """ Get a Point Cloud of the environment, with the route the robot has already taken so far """
         print("Getting Point Cloud and route graph...")
     
+
+    # get image
+    
+    def get_image(self, frame_id: int, lease = None):
+        get_image(self.robot, self.image_client, self.robot_state_client,
+                self.image_options, f"{frame_id:05d}", self.colmap_writer, lease)
+
+    def _save_and_reset_colmap(self):
+        if self.colmap_writer.num_images == 0:
+            logger.debug("_save_and_reset_colmap: no images buffered, skipping save")
+            self.colmap_writer.reset()
+            return
+        try:
+            self.colmap_writer.save()
+            logger.info(
+                "COLMAP model saved (%d camera(s), %d image(s))",
+                self.colmap_writer.num_cameras,
+                self.colmap_writer.num_images,
+            )
+        except Exception as e:
+            logger.warning("Failed to save COLMAP model: %s", e)
+            self.report_error(f"Failed to save COLMAP model: {e}", e)
+        finally:
+            # Always reset so the next session starts clean, even if save failed
+            self.colmap_writer.reset()
 
     # Lease
 

@@ -22,7 +22,7 @@ from bosdyn.geometry import EulerZXY
 from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 
 from utils.image.ImageOptions import ImageOptions
-from utils.image.colmap_wirter import ColmapWriter, matrix_to_colmap_pose
+from utils.image.colmap_writer import ColmapWriter, matrix_to_colmap_pose
 
 logger = logging.getLogger(__name__)
 

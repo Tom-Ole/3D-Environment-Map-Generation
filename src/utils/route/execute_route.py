@@ -21,7 +21,7 @@ import grpc
 
 from utils.image.get_images import get_image
 from utils.image.ImageOptions import ImageOptions, ImageSources
-from utils.image.colmap_wirter import ColmapWriter
+from utils.image.colmap_writer import ColmapWriter
 from pathlib import Path
 
 import bosdyn.client.channel
@@ -45,19 +45,22 @@ class GraphNavInterface(object):
     """GraphNav service command line interface."""
 
 
-    def __init__(self, robot, output_path, cmd_client, state_client, graph_nav_client, power_client, lease,
+    def __init__(self, controller, output_path, lease,
                  capture_interval_m: float = 0.1):
-        self._robot = robot
+        
+        self.controller = controller
+
+        self._robot = self.controller.robot
 
         self._lease = lease
 
         self._robot.time_sync.wait_for_sync()
 
         # Clients
-        self._robot_command_client = cmd_client
-        self._robot_state_client = state_client
-        self._graph_nav_client = graph_nav_client
-        self._power_client = power_client
+        self._robot_command_client = self.controller.command_client
+        self._robot_state_client = self.controller.robot_state_client
+        self._graph_nav_client = self.controller.graph_nav_client
+        self._power_client = self.controller.power_client
 
         # Boolean indicating the robot's power state.
         power_state = self._robot_state_client.get_robot_state().power_state
@@ -267,29 +270,13 @@ class GraphNavInterface(object):
 
         #  Setup image capture 
         robot_image_client = self._robot.ensure_client('image')
-        image_dir = Path(self.output_path).parent
-        image_options = ImageOptions(output_path=str(image_dir), 
-                                    #  sources=ImageSources.get_color() dont work I dont know why
-                                    sources=[
-                                        ImageSources.BACK_FISHEYE_IMAGE,
-                                        ImageSources.FRONTLEFT_FISHEYE_IMAGE,
-                                        ImageSources.FRONTRIGHT_FISHEYE_IMAGE,
-                                        ImageSources.LEFT_FISHEYE_IMAGE,
-                                        ImageSources.RIGHT_FISHEYE_IMAGE,
-                                    ]
-                                     )
-        image_options.side_tilt=True
-        sparse_dir = image_dir / "sparse" / "0"
-        sparse_dir.mkdir(parents=True, exist_ok=True)
-        colmap_writer = ColmapWriter(sparse_dir)
         frame_id = 0
 
         if not self.toggle_power(should_power_on=True):
             raise RuntimeError("Failed to power on the robot.")
 
         logger.info("Capturing initial image (frame %05d)...", frame_id)
-        get_image(self._robot, robot_image_client, self._robot_state_client,
-                image_options, f"{frame_id:05d}", colmap_writer, self._lease)
+        self.controller.get_image(frame_id, self._lease)
         frame_id += 1
 
         loc = self._graph_nav_client.get_localization_state().localization
@@ -351,8 +338,7 @@ class GraphNavInterface(object):
                     dist,
                     frame_id,
                 )
-                get_image(self._robot, robot_image_client, self._robot_state_client,
-                        image_options, f"{frame_id:05d}", colmap_writer, self._lease)
+                self.controller.get_image(frame_id, self._lease)
                 frame_id += 1
                 last_capture_pos = current_pos
             else:

@@ -1,10 +1,26 @@
 import logging
+import math
 import time
-from typing import Callable, Optional
+from typing import Optional
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from bosdyn.client.frame_helpers import (
+    get_a_tform_b,
+    VISION_FRAME_NAME,
+    BODY_FRAME_NAME,
+)
+
+from utils.route.manual_walk import ManualWalkInterface
+
 logger = logging.getLogger(__name__)
+
+
+def _xy_distance(pose_a, pose_b) -> float:
+    """2D ground-plane distance between two SE3Poses (ignores Z/height)."""
+    dx = pose_a.x - pose_b.x
+    dy = pose_a.y - pose_b.y
+    return math.sqrt(dx * dx + dy * dy)
 
 
 class ManualWalkWorker(QThread):
@@ -12,63 +28,18 @@ class ManualWalkWorker(QThread):
     error = pyqtSignal(Exception)
     image_captured = pyqtSignal(str)
 
-    def __init__(self, controller, distance_interval_m: float = 1.0):
+    def __init__(self, interface: ManualWalkInterface, distance_interval_m: float = 1.0):
         super().__init__()
-        self.controller = controller
+        self.interface = interface
         self.distance_interval_m = distance_interval_m
-        self._running = False
-        self._last_position = None
 
     def run(self):
         try:
-            self._running = True
-            logger.info("Starting manual walk with distance interval: %.2fm", self.distance_interval_m)
-            
-            while self._running:
-                if not self.controller.robot:
-                    time.sleep(0.1)
-                    continue
-                
-                try:
-                    state = self.controller.robot_state_client.get_robot_state()
-                    current_position = state.kinematic_state.odom_tform_body.position
-                    
-                    if self._last_position is not None:
-                        distance = self._calculate_distance(self._last_position, current_position)
-                        if distance >= self.distance_interval_m:
-                            self._capture_image()
-                            self._last_position = current_position
-                    else:
-                        self._last_position = current_position
-                        self._capture_image()
-                    
-                except Exception as e:
-                    logger.warning("Failed to get robot state during manual walk: %s", e)
-                
-                time.sleep(0.1)
-            
-            logger.info("Manual walk stopped")
+            self.interface.start_walk(self.distance_interval_m)
             self.finished.emit()
-            
         except Exception as e:
-            logger.error("Manual walk worker error: %s", e)
+            logger.error("ManualWalkWorker error: %s", e)
             self.error.emit(e)
 
-    def _calculate_distance(self, pos1, pos2):
-        dx = pos1.x - pos2.x
-        dy = pos1.y - pos2.y
-        dz = pos1.z - pos2.z
-        return (dx**2 + dy**2 + dz**2)**0.5
-
-    def _capture_image(self):
-        try:
-            image_path = self.controller.get_image(save=True)
-            if image_path:
-                self.image_captured.emit(str(image_path))
-                logger.info("Image captured during manual walk")
-        except Exception as e:
-            logger.error("Failed to capture image during manual walk: %s", e)
-
     def stop(self):
-        self._running = False
-        self.wait()
+        self.interface.stop_walk()

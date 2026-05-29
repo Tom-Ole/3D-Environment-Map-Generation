@@ -16,8 +16,14 @@ import bosdyn.client.util
 from utils.controller.spot_controller import SpotController
 from utils.controller.sim_spot_controller import SimSpotController
 
+import os
+from dotenv import load_dotenv
+
 
 # TODO: more research sublease
+# TODO: Getting ESTOP right / returning / closing
+# TODO: time it takes for preprocessing would be intresting
+# TODO: Fix folder structure
 
 
 def login_prompt():
@@ -49,11 +55,17 @@ def login_prompt():
 
     return username_textbox.text(), password_textbox.text()
 
+def login_env():
+    username = os.environ.get("BOSDYN_USERNAME")
+    password = os.environ.get("BOSDYN_PASSWORD")
+    return username, password
+
 
 def main():
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%H:%M:%S"
     )
 
     app = QApplication(sys.argv)
@@ -75,7 +87,12 @@ def main():
     if(not options.isSim):
         sdk = bosdyn.client.create_standard_sdk("auto_3D")
         robot = sdk.create_robot(options.hostname)
-        bosdyn.client.util.authenticate(robot, askpass=login_prompt)
+        if not options.autologin:
+            bosdyn.client.util.authenticate(robot, askpass=login_prompt)
+        else:
+            load_dotenv()
+            bosdyn.client.util.authenticate(robot, askpass=login_env)
+
         controller = SpotController(robot, hostname=options.hostname)
     else:
         controller = SimSpotController()
@@ -92,6 +109,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-H", "--hostname", help="Hostname of the robot", default="192.168.10.3")
     parser.add_argument("-S", "--isSim", help="Start a pseudo Simulation for debugging the GUI", action="store_true")
+    parser.add_argument("-A", "--autologin", help="Login via .env variables", action="store_true")
 
     #bosdyn.client.util.add_base_arguments(parser)
 
