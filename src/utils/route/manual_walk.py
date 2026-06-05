@@ -6,7 +6,6 @@ from typing import Optional
 from bosdyn.client.frame_helpers import get_a_tform_b, VISION_FRAME_NAME, BODY_FRAME_NAME
 
 from utils.image.get_images import get_image
-from utils.image.colmap_writer import ColmapWriter
 from utils.image.ImageOptions import ImageOptions, ImageSources
 from pathlib import Path
 

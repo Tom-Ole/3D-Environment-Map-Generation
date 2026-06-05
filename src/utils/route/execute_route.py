@@ -21,7 +21,6 @@ import grpc
 
 from utils.image.get_images import get_image
 from utils.image.ImageOptions import ImageOptions, ImageSources
-from utils.image.colmap_writer import ColmapWriter
 from pathlib import Path
 
 import bosdyn.client.channel

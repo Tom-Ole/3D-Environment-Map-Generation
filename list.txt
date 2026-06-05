@@ -147,3 +147,28 @@ Traceback (most recent call last):
     ^^^^^^^^^
 bosdyn.client.estop.EndpointMismatchError: bosdyn.api.RegisterEstopEndpointResponse (EndpointMismatchError): Target endpoint did not match.
 14:23:44 INFO [auto_3D] Starting estop check-in
+
+
+
+(bachelor) PS C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation> python .\src\app.py -H 192.168.10.3 -A
+14:32:31 ERROR [utils.controller.errors] ESTOP registration failed, using fallback: bosdyn.api.RegisterEstopEndpointResponse (EndpointMismatchError): Target endpoint did not match.
+Traceback (most recent call last):
+  File "C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\src\utils\controller\spot_controller.py", line 114, in __init__
+    self.estop_endpoint.register(active_config.unique_id)
+  File "C:\Users\Tom-o\Desktop\envs\bachelor\Lib\site-packages\bosdyn\client\estop.py", line 366, in register
+    new_endpoint = self.client.register(target_config_id, self)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tom-o\Desktop\envs\bachelor\Lib\site-packages\bosdyn\client\estop.py", line 83, in register
+    return self.call(self._stub.RegisterEstopEndpoint, req,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tom-o\Desktop\envs\bachelor\Lib\site-packages\bosdyn\client\common.py", line 307, in processor
+    return func(self, rpc_method, request, value_from_response=value_from_response,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tom-o\Desktop\envs\bachelor\Lib\site-packages\bosdyn\client\common.py", line 449, in call
+    return self.handle_response(response, error_from_response, value_from_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tom-o\Desktop\envs\bachelor\Lib\site-packages\bosdyn\client\common.py", line 457, in handle_response
+    raise exc  # pylint: disable=raising-bad-type
+    ^^^^^^^^^
+bosdyn.client.estop.EndpointMismatchError: bosdyn.api.RegisterEstopEndpointResponse (EndpointMismatchError): Target endpoint did not match.
+14:32:31 INFO [auto_3D] Starting estop check-in

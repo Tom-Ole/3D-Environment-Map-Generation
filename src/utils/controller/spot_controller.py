@@ -33,7 +33,7 @@ from bosdyn.api import robot_state_pb2
 from utils.route.manual_walk import ManualWalkInterface
 
 from utils.image.get_images import get_image
-from utils.image.colmap_writer import ColmapWriter
+from utils.image.spot_colmap import SpotColmapWriter
 from utils.image.ImageOptions import ImageOptions, ImageSources
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ class SpotController(QObject):
 
         sparse_dir = image_dir / "images" / "sparse" / "0"
         sparse_dir.mkdir(parents=True, exist_ok=True)
-        self.colmap_writer = ColmapWriter(sparse_dir)
+        self.colmap_writer = SpotColmapWriter(sparse_dir)
 
         # Preprocessor
         self.preprocessor = Preprocessor()
