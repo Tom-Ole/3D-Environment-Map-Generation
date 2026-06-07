@@ -1,6 +1,35 @@
-bosdyn-api
-bosdyn-client
-bosdyn-core
-ultralytics
-vtk
-PyQt5
+# SPOT 3D Capture & Reconstruction Application
+# Python 3.12+ required
+# Created: 2026-06-07
+
+# Boston Dynamics SPOT SDK
+bosdyn-api==4.1.0
+bosdyn-client==4.1.0
+bosdyn-core==4.1.0
+
+# Numerical and scientific computing
+numpy>=1.26.0,<2.0
+scipy>=1.11.0
+
+# 3D point cloud and mesh processing
+open3d>=0.17.0
+
+# Computer vision
+opencv-python>=4.8.0
+scikit-image>=0.22.0
+
+# SLAM and registration
+kiss-icp>=0.3.0
+small-gicp>=0.12.0
+
+# GUI framework and visualization
+PySide6>=6.6.0
+pyvistaqt>=0.8.0
+
+# Configuration and utilities
+python-dotenv>=1.0.0
+
+# Optional: For development/debugging
+# pytest>=7.4.0
+# black>=23.0.0
+# mypy>=1.6.0
