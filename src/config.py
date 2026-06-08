@@ -36,9 +36,7 @@ class Config:
     log_file: Optional[Path] = None
 
     def __post_init__(self) -> None:
-        """Ensure output directory exists."""
         self.output_dir = Path(self.output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
         if self.log_file:
             self.log_file = Path(self.log_file)
             self.log_file.parent.mkdir(parents=True, exist_ok=True)
