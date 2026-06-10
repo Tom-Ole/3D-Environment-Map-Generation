@@ -31,9 +31,7 @@ def quaternion_inverse(q: np.ndarray) -> np.ndarray:
 
 def quaternion_to_rotation_matrix(q: np.ndarray) -> np.ndarray:
     """Convert quaternion (scalar-last: [x, y, z, w]) to 3x3 rotation matrix."""
-    # scipy uses scalar-first convention, so we need to convert
-    q_scipy = np.array([q[3], q[0], q[1], q[2]])  # [w, x, y, z]
-    rot = Rotation.from_quat(q_scipy)
+    rot = Rotation.from_quat(q)  # scipy expects scalar-last [x, y, z, w]
     return rot.as_matrix()
 
 
@@ -102,22 +100,9 @@ def interpolate_pose(
     """
     pos_interp = (1 - alpha) * pos1 + alpha * pos2
 
-    # SLERP for rotation (scipy uses scalar-first)
-    q1_scipy = np.array([quat1[3], quat1[0], quat1[1], quat1[2]])
-    q2_scipy = np.array([quat2[3], quat2[0], quat2[1], quat2[2]])
-
-    slerp = Slerp([0, 1], Rotation.from_quat(np.array([q1_scipy, q2_scipy])))
-    quat_interp_scipy = slerp(alpha).as_quat()
-
-    # Convert back to scalar-last
-    quat_interp = np.array(
-        [
-            quat_interp_scipy[1],
-            quat_interp_scipy[2],
-            quat_interp_scipy[3],
-            quat_interp_scipy[0],
-        ]
-    )
+    # SLERP for rotation — scipy Rotation uses scalar-last [x, y, z, w]
+    slerp = Slerp([0, 1], Rotation.from_quat(np.stack([quat1, quat2])))
+    quat_interp = slerp(alpha).as_quat()  # Returns [x, y, z, w]
 
     return pos_interp, quat_interp
 

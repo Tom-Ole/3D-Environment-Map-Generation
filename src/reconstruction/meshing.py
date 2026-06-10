@@ -42,10 +42,11 @@ def generate_mesh(
         if colors is not None:
             pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32) / 255.0)
 
-        # Estimate normals (required for Poisson)
+        # Estimate and orient normals consistently (required for Poisson)
         pcd.estimate_normals(
             search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 2, max_nn=30)
         )
+        pcd.orient_normals_consistent_tangent_plane(k=30)
 
         # Poisson reconstruction
         mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(

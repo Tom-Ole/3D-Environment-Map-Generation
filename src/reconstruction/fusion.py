@@ -18,7 +18,7 @@ def fuse_and_downsample(
 
     Args:
         scans: List of Nx3 point clouds
-        optimized_poses: Nx7 optimized poses [t, x, y, z, qx, qy, qz, qw]
+        optimized_poses: Nx7 optimized poses [x, y, z, qx, qy, qz, qw]
         voxel_size: Voxel size for downsampling
 
     Returns:
@@ -38,8 +38,8 @@ def fuse_and_downsample(
             break
 
         pose = optimized_poses[i]
-        pos = pose[1:4]
-        quat = pose[4:8]
+        pos = pose[:3]
+        quat = pose[3:7]
 
         # Transform scan to world frame
         R = quaternion_to_rotation_matrix(quat)

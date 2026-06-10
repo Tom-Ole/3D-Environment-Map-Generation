@@ -34,10 +34,10 @@ def build_pose_graph(
         # Create empty pose graph
         pose_graph = o3d.pipelines.registration.PoseGraph()
 
-        # Add nodes (one per pose)
+        # Add nodes (one per pose) — odometry_poses are 8-element [t, x, y, z, qx, qy, qz, qw]
         for i in range(len(odometry_poses)):
             pose_7d = odometry_poses[i]
-            pose_4x4 = transform_7d_to_4x4(pose_7d)
+            pose_4x4 = transform_7d_to_4x4(pose_7d[1:])  # strip timestamp
             pose_graph.nodes.append(o3d.pipelines.registration.PoseGraphNode(pose_4x4))
 
         logger.info(f"Added {len(odometry_poses)} nodes to pose graph")
@@ -47,8 +47,8 @@ def build_pose_graph(
             src_pose = odometry_poses[i]
             tgt_pose = odometry_poses[i + 1]
 
-            # Relative transform
-            relative_transform = relative_pose(src_pose, tgt_pose)
+            # Relative transform — strip timestamp for 7-element helpers
+            relative_transform = relative_pose(src_pose[1:], tgt_pose[1:])
             relative_4x4 = transform_7d_to_4x4(relative_transform)
 
             # Information matrix (inverse covariance)

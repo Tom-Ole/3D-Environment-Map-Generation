@@ -112,8 +112,8 @@ def register_scan_pair(
             ),
         )
 
-        if result.fitness < 0.1:
-            logger.warning(f"Low fitness in registration: {result.fitness}")
+        if result.fitness < 0.3:
+            logger.warning(f"Low fitness in registration: {result.fitness:.3f}")
             return False, None
 
         # Extract transform as 7D vector
@@ -151,6 +151,11 @@ def process_loop_closures(
     Returns:
         LoopClosureResult with registered pairs
     """
+    # relative_pose(a, b) = T_a_world * T_world_b = transforms b-frame → a-frame.
+    # ICP(source, target, init) needs init that maps source → target frame.
+    # So init = relative_pose(tgt, src) = T_tgt_src (source scan → target frame).
+    from reconstruction.global_opt import transform_7d_to_4x4, relative_pose as _rel
+
     result = LoopClosureResult(candidates=candidates, registered_pairs={})
 
     for candidate in candidates:
@@ -160,15 +165,16 @@ def process_loop_closures(
         if src_idx >= len(scans) or tgt_idx >= len(scans):
             continue
 
-        # Estimate initial transform from pose difference
-        src_pos = poses[src_idx, 1:4]
-        tgt_pos = poses[tgt_idx, 1:4]
-        initial_pos = tgt_pos - src_pos
+        src_7d = poses[src_idx, 1:]  # [x, y, z, qx, qy, qz, qw]
+        tgt_7d = poses[tgt_idx, 1:]
+        rel_7d = _rel(tgt_7d, src_7d)  # T_tgt_src: source scan → target frame
+        initial_transform = transform_7d_to_4x4(rel_7d)
 
-        # Try registration
+        # Try registration with pose-seeded initial guess
         success, transform_7d = register_scan_pair(
             scans[src_idx],
             scans[tgt_idx],
+            initial_transform=initial_transform,
             max_correspondence_distance=max_correspondence_distance,
         )
 
