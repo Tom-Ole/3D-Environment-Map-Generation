@@ -4,13 +4,23 @@ import logging
 import time
 from typing import List, Optional
 
+import cv2
 import numpy as np
 from bosdyn.api import image_pb2
-from bosdyn.client.image import ImageClient
+from bosdyn.client.image import ImageClient, build_image_request
 
 from capture.types import CameraFrame
 
 logger = logging.getLogger(__name__)
+
+# cv2.rotate() code per camera, None = no rotation
+CAMERA_ROTATION = {
+    "back_fisheye_image": None,
+    "left_fisheye_image": None,
+    "right_fisheye_image": cv2.ROTATE_180,
+    "frontleft_fisheye_image": cv2.ROTATE_90_CLOCKWISE,
+    "frontright_fisheye_image": cv2.ROTATE_90_CLOCKWISE,
+}
 
 # Standard SPOT body camera source names
 DEFAULT_CAMERA_SOURCES = [
@@ -59,45 +69,52 @@ class ImageClientWrapper:
         timestamp = time.time()
 
         try:
-            # Request all images in a single call
-            # TODO: verify on robot the exact image source names
-            image_responses = self.client.get_image(self.sources)
+            image_responses = self.client.get_image(
+                [
+                    build_image_request(src, pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8)
+                    for src in self.sources
+                ]
+            )
 
             # https://dev.bostondynamics.com/protos/bosdyn/api/proto_reference#bosdyn-api-ImageResponse
             for response in image_responses:
                 source_name = response.source.name
 
                 # Parse image data based on format
-                if response.image.format == image_pb2.Image.FORMAT_JPEG:
-                    import cv2
-                    image_data = cv2.imdecode(
-                        np.frombuffer(response.image.data, dtype=np.uint8), cv2.IMREAD_COLOR
-                    )
-                elif response.image.format == image_pb2.Image.FORMAT_RAW:
-                    # Interpret as 8-bit grayscale or RGB
-                    width = response.image.cols
-                    height = response.image.rows
-                    if len(response.image.data) == width * height:
-                        # Grayscale
-                        image_data = np.frombuffer(
-                            response.image.data, dtype=np.uint8
-                        ).reshape((height, width, 1))
-                        image_data = np.repeat(image_data, 3, axis=2)  # Convert to BGR
-                    elif len(response.image.data) == width * height * 3:
-                        # RGB
-                        image_data = np.frombuffer(
-                            response.image.data, dtype=np.uint8
-                        ).reshape((height, width, 3))
-                        # Swap R and B for BGR
-                        image_data = image_data[..., ::-1]
-                    else:
-                        logger.warning(
-                            f"Unexpected image data size for {source_name}: {len(response.image.data)}"
+                # ImageResponse structure: response.shot.image.{data,format,rows,cols}
+                img_proto = response.shot.image
+                raw = np.frombuffer(img_proto.data, dtype=np.uint8)
+
+                if img_proto.format == image_pb2.Image.FORMAT_RAW:
+                    width, height = img_proto.cols, img_proto.rows
+                    pf = img_proto.pixel_format
+                    if pf == image_pb2.Image.PIXEL_FORMAT_RGB_U8:
+                        image_data = raw.reshape(height, width, 3)[..., ::-1]  # RGB→BGR
+                    elif pf == image_pb2.Image.PIXEL_FORMAT_RGBA_U8:
+                        image_data = cv2.cvtColor(
+                            raw.reshape(height, width, 4), cv2.COLOR_RGBA2BGR
                         )
-                        continue
+                    elif pf in (
+                        image_pb2.Image.PIXEL_FORMAT_GREYSCALE_U8,
+                        image_pb2.Image.PIXEL_FORMAT_GREYSCALE_U16,
+                    ):
+                        image_data = cv2.cvtColor(
+                            raw.reshape(height, width), cv2.COLOR_GRAY2BGR
+                        )
+                    else:
+                        # Unknown format — try imdecode as fallback
+                        image_data = cv2.imdecode(raw, cv2.IMREAD_COLOR)
                 else:
-                    logger.warning(f"Unsupported image format for {source_name}")
+                    # FORMAT_JPEG and any other encoded format
+                    image_data = cv2.imdecode(raw, cv2.IMREAD_COLOR)
+
+                if image_data is None:
+                    logger.warning(f"Failed to decode image from {source_name}")
                     continue
+
+                rotation = CAMERA_ROTATION.get(source_name)
+                if rotation is not None:
+                    image_data = cv2.rotate(image_data, rotation)
 
                 # Extract intrinsics if available
                 fx, fy, cx, cy = None, None, None, None
@@ -155,7 +172,9 @@ class ImageClientWrapper:
             List of source names
         """
         try:
-            image_responses = self.client.get_image(self.sources)
+            image_responses = self.client.get_image(
+                [build_image_request(src) for src in self.sources]
+            )
             return [resp.source.name for resp in image_responses]
         except Exception as e:
             logger.error(f"Failed to get available image sources: {e}")

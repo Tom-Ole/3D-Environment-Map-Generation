@@ -13,6 +13,7 @@ venv.bak/
 # IDE and editor
 .vscode/
 .idea/
+.claude
 *.swp
 *.swo
 *~

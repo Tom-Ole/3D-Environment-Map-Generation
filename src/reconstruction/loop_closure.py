@@ -15,6 +15,7 @@ def detect_loop_closures(
     scans: List[np.ndarray],
     distance_threshold: float = 2.0,
     min_frame_gap: int = 10,
+    max_candidates_per_frame: int = 3,
 ) -> List[LoopClosureCandidate]:
     """
     Detect loop closure candidates using spatial proximity of poses.
@@ -28,28 +29,36 @@ def detect_loop_closures(
     Returns:
         List of LoopClosureCandidate objects
     """
-    candidates = []
+    from scipy.spatial import cKDTree
 
-    # Extract positions only
+    candidates = []
     positions = poses[:, 1:4]
 
     logger.info(
         f"Detecting loop closures (threshold: {distance_threshold}m, gap: {min_frame_gap})"
     )
 
-    # Compare all pairs of poses
-    for i in range(len(poses)):
-        for j in range(i + min_frame_gap, len(poses)):
-            distance = np.linalg.norm(positions[i] - positions[j])
+    tree = cKDTree(positions)
+    pairs = tree.query_pairs(distance_threshold)
 
-            if distance < distance_threshold:
-                candidate = LoopClosureCandidate(
-                    source_idx=i,
-                    target_idx=j,
-                    distance=distance,
-                    confidence=1.0 - (distance / distance_threshold),
-                )
-                candidates.append(candidate)
+    # Group by source frame, keep closest max_candidates_per_frame per frame
+    from collections import defaultdict
+    per_frame: dict = defaultdict(list)
+    for i, j in pairs:
+        if abs(j - i) < min_frame_gap:
+            continue
+        distance = np.linalg.norm(positions[i] - positions[j])
+        per_frame[i].append((distance, j))
+
+    for i, neighbours in per_frame.items():
+        neighbours.sort()
+        for distance, j in neighbours[:max_candidates_per_frame]:
+            candidates.append(LoopClosureCandidate(
+                source_idx=i,
+                target_idx=j,
+                distance=distance,
+                confidence=1.0 - (distance / distance_threshold),
+            ))
 
     logger.info(f"Found {len(candidates)} loop closure candidates")
     return candidates

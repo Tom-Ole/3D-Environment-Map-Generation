@@ -5,6 +5,12 @@ import time
 from typing import Optional, Tuple
 
 import numpy as np
+from bosdyn.client.frame_helpers import (
+    BODY_FRAME_NAME,
+    ODOM_FRAME_NAME,
+    VISION_FRAME_NAME,
+    get_a_tform_b,
+)
 from bosdyn.client.robot_state import RobotStateClient
 
 from capture.types import ImuData, RobotPose
@@ -27,7 +33,6 @@ class StateClientWrapper:
             client: bosdyn.client.robot_state.RobotStateClient
         """
         self.client = client
-        self.frame_name = "vision"  # TODO: verify on robot (typically "vision" or "odom")
 
     def get_robot_pose(self) -> Optional[RobotPose]:
         """
@@ -42,49 +47,28 @@ class StateClientWrapper:
         try:
             timestamp = time.time()
 
-            # Get frame tree snapshot
             state = self.client.get_robot_state()
             frame_tree = state.kinematic_state.transforms_snapshot
 
-            # Look for body_tform_vision or odom_tform_body
-            # TODO: verify on robot the exact frame names in the frame tree
-            target_frame = f"{self.frame_name}_tform_body"
+            # Try vision first (odometry-corrected), fall back to odom
+            tform = get_a_tform_b(frame_tree, VISION_FRAME_NAME, BODY_FRAME_NAME)
+            frame_id = VISION_FRAME_NAME
+            if tform is None:
+                tform = get_a_tform_b(frame_tree, ODOM_FRAME_NAME, BODY_FRAME_NAME)
+                frame_id = ODOM_FRAME_NAME
 
-            body_tform = None
-            for frame in frame_tree.child_to_parent_edge_map.values():
-                if frame.parent_frame_name == self.frame_name:
-                    body_tform = frame.parent_tform_child.inverse()
-                    break
-
-            if not body_tform:
-                # Try alternative name
-                for frame in frame_tree.child_to_parent_edge_map.values():
-                    if frame.child_frame_name == self.frame_name:
-                        body_tform = frame.parent_tform_child
-                        break
-
-            if not body_tform:
-                logger.warning(f"Could not find {target_frame} in frame tree")
+            if tform is None:
+                logger.warning("Could not find body pose in frame tree")
                 return None
 
-            # Extract position
             position = np.array(
-                [
-                    body_tform.position.x,
-                    body_tform.position.y,
-                    body_tform.position.z,
-                ],
+                [tform.position.x, tform.position.y, tform.position.z],
                 dtype=np.float32,
             )
 
-            # Extract quaternion (scalar-last convention)
+            # SE3Pose.rot is a Quat with x/y/z/w (scalar-last)
             quaternion = np.array(
-                [
-                    body_tform.rotation.x,
-                    body_tform.rotation.y,
-                    body_tform.rotation.z,
-                    body_tform.rotation.w,
-                ],
+                [tform.rot.x, tform.rot.y, tform.rot.z, tform.rot.w],
                 dtype=np.float32,
             )
 
@@ -92,10 +76,10 @@ class StateClientWrapper:
                 timestamp=timestamp,
                 position=position,
                 quaternion=quaternion,
-                frame_id=self.frame_name,
+                frame_id=frame_id,
             )
 
-            logger.debug(f"Got robot pose: {position}, quat: {quaternion}")
+            logger.debug(f"Got robot pose in {frame_id}: {position}, quat: {quaternion}")
             return pose
 
         except Exception as e:
