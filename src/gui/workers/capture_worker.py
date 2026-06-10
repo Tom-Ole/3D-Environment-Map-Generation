@@ -11,7 +11,6 @@ from PySide6.QtCore import QThread, Signal, Slot
 import bosdyn.client
 import bosdyn.client.util
 from bosdyn.client.image import ImageClient
-from bosdyn.client.point_cloud import PointCloudClient
 from bosdyn.client.robot_state import RobotStateClient
 
 from capture.lidar_client import LidarClientWrapper
@@ -77,6 +76,7 @@ class CaptureWorker(QThread):
         self.camera_count = 0
         self.pose_count = 0
         self.start_time: Optional[float] = None
+        self.end_time_duration: Optional[float] = None
         self.last_lidar_time = 0.0
         self.last_camera_time = 0.0
 
@@ -129,7 +129,7 @@ class CaptureWorker(QThread):
 
             # Create client wrappers (these handle the bosdyn clients internally)
             try:
-                lidar_client = self.robot.ensure_client(PointCloudClient.default_service_name)
+                lidar_client = self.robot.ensure_client('velodyne-point-cloud')
                 self.lidar_client_wrapper = LidarClientWrapper(lidar_client)
                 logger.info("LiDAR client initialized")
             except Exception as e:
@@ -243,6 +243,7 @@ class CaptureWorker(QThread):
 
             self.recording = True
             self.start_time = time.time()
+            self.end_time_duration = None
             self.lidar_count = 0
             self.camera_count = 0
             self.pose_count = 0
@@ -258,6 +259,8 @@ class CaptureWorker(QThread):
         """Stop recording session."""
         if not self.recording:
             return
+        
+        self.end_time_duration = time.time() 
 
         try:
             logger.info("Stopping recording")
@@ -271,7 +274,7 @@ class CaptureWorker(QThread):
                 self.session.metadata.lidar_frame_count = self.lidar_count
                 self.session.metadata.image_frame_count = self.camera_count
                 self.session.metadata.pose_frame_count = self.pose_count
-                self.session.metadata.end_time = datetime.now()
+                self.session.metadata.end_time = datetime.now() 
                 save_session_metadata(self.session)
 
             logger.info(
@@ -287,8 +290,10 @@ class CaptureWorker(QThread):
     def get_stats(self) -> dict:
         """Get current capture statistics."""
         duration = 0.0
-        if self.start_time:
+        if self.start_time and not self.end_time_duration:
             duration = time.time() - self.start_time
+        elif self.end_time_duration:
+            duration = self.end_time_duration - self.start_time
 
         return {
             "lidar_count": self.lidar_count,

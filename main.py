@@ -1,6 +1,8 @@
 """Entry point for SPOT LiDAR capture and 3D reconstruction application."""
-
 import sys
+
+sys.dont_write_bytecode = True
+
 from pathlib import Path
 
 # Add src directory to path

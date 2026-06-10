@@ -37,30 +37,44 @@ def kiss_icp_odometry(
         return np.array([]), np.array([])
 
     try:
-        import kiss_icp
+        from kiss_icp.pipeline import KissICP
+        from kiss_icp.config import KISSConfig
+        from scipy.spatial.transform import Rotation
 
         logger.info(f"Running KISS-ICP odometry on {len(scans)} scans")
 
-        # Initialize KISS-ICP
-        odometry = kiss_icp.KissICP()
+        config = KISSConfig()
+        config.mapping.voxel_size = voxel_size
+        config.data.deskew = False  # we have no per-point timestamps; deskew divides by time range
+        odometry = KissICP(config=config)
 
         poses = []
         frame_indices = []
 
         for idx, scan in enumerate(scans):
-            # Downsample scan
-            scan_ds = downsample_cloud(scan, voxel_size)
+            # Drop NaN/Inf and zero-range points (invalid LiDAR returns)
+            valid = np.isfinite(scan).all(axis=1)
+            scan_clean = scan[valid]
+            dist = np.linalg.norm(scan_clean, axis=1)
+            scan_clean = scan_clean[dist > 0.1]
 
-            # Run odometry
-            pose = odometry.update(scan_ds)
+            if len(scan_clean) == 0:
+                logger.warning(f"Scan {idx} has no valid points after filtering, skipping")
+                pose_vec = poses[-1] if poses else np.array([0., 0., 0., 0., 0., 0., 0., 1.])
+                poses.append(pose_vec)
+                frame_indices.append(idx)
+                continue
 
-            # Extract pose as [x, y, z, qx, qy, qz, qw]
-            x, y = pose.translation
-            quat = pose.rotation.as_quat()  # [x, y, z, w]
+            timestamps = np.zeros(len(scan_clean))
+            odometry.register_frame(scan_clean, timestamps)
+
+            # last_pose is a 4x4 SE3 matrix
+            T = odometry.last_pose
+            t = T[:3, 3]
+            quat = Rotation.from_matrix(T[:3, :3]).as_quat()  # [x, y, z, w]
 
             # Convert to our format [t, x, y, z, qx, qy, qz, qw]
-            # Note: t is placeholder (use scan timestamp later)
-            pose_vec = np.array([0.0, x, y, 0.0, quat[0], quat[1], quat[2], quat[3]])
+            pose_vec = np.array([0.0, t[0], t[1], t[2], quat[0], quat[1], quat[2], quat[3]])
             poses.append(pose_vec)
             frame_indices.append(idx)
 

@@ -10,6 +10,7 @@ from typing import Optional
 import numpy as np
 from open3d.geometry import PointCloud
 from open3d.io import write_point_cloud
+from open3d.utility import Vector3dVector
 
 from capture.types import CameraFrame, LidarFrame, RobotPose
 from recording.session import save_intrinsics, save_poses, save_session_metadata
@@ -100,10 +101,8 @@ class DiskWriter:
                 try:
                     item = self.queue.get(timeout=1.0)
                     self._process_item(item)
-                except Exception as e:
-                    if self.running:
-                        logger.debug(f"Queue timeout or error: {e}")
-                    break
+                except Exception:
+                    continue  # queue.Empty on timeout — keep waiting
 
         except Exception as e:
             logger.error(f"Writer loop crashed: {e}")
@@ -129,14 +128,12 @@ class DiskWriter:
         lidar_path = self.session.get_lidar_folder()
         frame_path = lidar_path / f"{frame.frame_id:05d}.ply"
 
-        # Create point cloud with intensity as color
         pcd = PointCloud()
-        pcd.points.append(frame.points)
+        pcd.points = Vector3dVector(frame.points.astype(np.float64))
 
-        # Store intensity as colors (repeat to RGB)
-        intensity_normalized = frame.intensity.astype(np.float32) / 255.0
+        intensity_normalized = frame.intensity.astype(np.float64) / 255.0
         colors = np.repeat(intensity_normalized[:, np.newaxis], 3, axis=1)
-        pcd.colors.append(colors)
+        pcd.colors = Vector3dVector(colors)
 
         write_point_cloud(str(frame_path), pcd)
 

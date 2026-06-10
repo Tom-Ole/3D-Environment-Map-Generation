@@ -135,18 +135,30 @@ def align_odometry_to_reference(
     Returns:
         Aligned odometry poses (Nx7) and alignment error
     """
-    # Extract positions only for now
     odo_pos = odometry_poses[:, 1:4]
     ref_pos = reference_poses[:, 1:4]
 
+    # Subsample the larger trajectory to match the smaller one before SVD.
+    # SPOT provides sparser poses (e.g. 81) vs dense odometry (e.g. 481).
+    n_odo, n_ref = len(odo_pos), len(ref_pos)
+    if n_odo != n_ref:
+        if n_odo > n_ref:
+            idx = np.round(np.linspace(0, n_odo - 1, n_ref)).astype(int)
+            odo_pos_aligned = odo_pos[idx]
+            ref_pos_aligned = ref_pos
+        else:
+            idx = np.round(np.linspace(0, n_ref - 1, n_odo)).astype(int)
+            odo_pos_aligned = odo_pos
+            ref_pos_aligned = ref_pos[idx]
+    else:
+        odo_pos_aligned = odo_pos
+        ref_pos_aligned = ref_pos
+
     # Simple rigid alignment using SVD (Umeyama)
-    centroid_odo = odo_pos.mean(axis=0)
-    centroid_ref = ref_pos.mean(axis=0)
+    centroid_odo = odo_pos_aligned.mean(axis=0)
+    centroid_ref = ref_pos_aligned.mean(axis=0)
 
-    odo_centered = odo_pos - centroid_odo
-    ref_centered = ref_pos - centroid_ref
-
-    H = odo_centered.T @ ref_centered
+    H = (odo_pos_aligned - centroid_odo).T @ (ref_pos_aligned - centroid_ref)
     U, _, Vt = np.linalg.svd(H)
     R = Vt.T @ U.T
 
@@ -156,20 +168,11 @@ def align_odometry_to_reference(
 
     t = centroid_ref - R @ centroid_odo
 
+    R_quat = rotation_matrix_to_quaternion(R)
     aligned_poses = odometry_poses.copy()
     for i in range(len(aligned_poses)):
-        pos = odometry_poses[i, 1:4]
-        quat = odometry_poses[i, 4:8]
+        aligned_poses[i, 1:4] = R @ odometry_poses[i, 1:4] + t
+        aligned_poses[i, 4:8] = quaternion_multiply(R_quat, odometry_poses[i, 4:8])
 
-        # Apply rotation and translation to position
-        aligned_pos = R @ pos + t
-
-        # Apply rotation to quaternion (compose rotations)
-        R_quat = rotation_matrix_to_quaternion(R)
-        aligned_quat = quaternion_multiply(R_quat, quat)
-
-        aligned_poses[i, 1:4] = aligned_pos
-        aligned_poses[i, 4:8] = aligned_quat
-
-    error = np.linalg.norm(R @ odo_pos.T + t[:, None] - ref_pos.T)
+    error = np.mean(np.linalg.norm(R @ odo_pos_aligned.T + t[:, None] - ref_pos_aligned.T, axis=0))
     return aligned_poses, error
