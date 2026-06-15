@@ -1,139 +1,151 @@
-"""Point cloud fusion and voxel downsampling."""
+"""
+Point cloud fusion and Poisson surface reconstruction.
+
+Fusion:
+  Transform each keyframe scan by its optimised world pose, accumulate
+  into a single PointCloud, and voxel-downsample periodically to keep
+  memory bounded.
+
+Meshing:
+  Estimate normals on the fused cloud, run Open3D's screened Poisson
+  reconstruction, and prune low-density boundary artefacts.
+"""
 
 import logging
-from typing import List, Tuple
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
+import open3d as o3d
 
 logger = logging.getLogger(__name__)
 
+_POISSON_DEPTH = 9
+_DENSITY_PRUNE_PCT = 0.05       # remove the bottom 5 % of density vertices
+_NORMAL_RADIUS = 0.3            # metres for KD-tree normal estimation
+_NORMAL_MAX_NN = 30
+_ORIENT_K = 15                  # neighbours for consistent normal orientation
 
-def fuse_and_downsample(
-    scans: List[np.ndarray],
-    optimized_poses: np.ndarray,
+
+def fuse_point_clouds(
+    scan_paths: List[Path],
+    poses: List[np.ndarray],
     voxel_size: float = 0.05,
-) -> np.ndarray:
+    progress_cb: Optional[Callable[[int, int], None]] = None,
+) -> o3d.geometry.PointCloud:
     """
-    Transform all scans to world frame and fuse into a single cloud.
+    Accumulate transformed scans into a single downsampled map.
 
     Args:
-        scans: List of Nx3 point clouds
-        optimized_poses: Nx7 optimized poses [x, y, z, qx, qy, qz, qw]
-        voxel_size: Voxel size for downsampling
+        scan_paths: PLY paths (one per keyframe).
+        poses: Corresponding 4x4 world-frame SE(3) matrices.
+        voxel_size: Output voxel grid resolution (m).
+        progress_cb: Called with (done, total).
 
     Returns:
-        Fused and downsampled point cloud (Mx3)
+        Fused Open3D PointCloud.
     """
-    from utils.transforms import quaternion_to_rotation_matrix
+    accumulated = o3d.geometry.PointCloud()
+    n = len(scan_paths)
+    downsample_every = max(1, min(50, n // 10))  # partial downsample cadence
 
-    logger.info(f"Fusing {len(scans)} scans with voxel_size={voxel_size}")
+    for i, (path, T) in enumerate(zip(scan_paths, poses)):
+        pcd = o3d.io.read_point_cloud(str(path))
+        if len(pcd.points) == 0:
+            continue
 
-    fused_cloud = []
+        pcd.transform(T)
+        accumulated += pcd
 
-    for i, scan in enumerate(scans):
-        if i >= len(optimized_poses):
-            logger.warning(
-                f"More scans ({len(scans)}) than poses ({len(optimized_poses)}), stopping"
-            )
-            break
+        # Periodically downsample to bound memory during accumulation
+        if (i + 1) % downsample_every == 0 and voxel_size > 0:
+            accumulated = accumulated.voxel_down_sample(voxel_size)
 
-        pose = optimized_poses[i]
-        pos = pose[:3]
-        quat = pose[3:7]
+        if progress_cb:
+            progress_cb(i + 1, n)
 
-        # Transform scan to world frame
-        R = quaternion_to_rotation_matrix(quat)
-        scan_world = scan @ R.T + pos[np.newaxis, :]
+    # Final downsample
+    if voxel_size > 0 and len(accumulated.points) > 0:
+        accumulated = accumulated.voxel_down_sample(voxel_size)
 
-        fused_cloud.append(scan_world)
-
-    # Concatenate all clouds
-    if not fused_cloud:
-        logger.warning("No scans to fuse")
-        return np.array([]).reshape(0, 3)
-
-    fused_cloud = np.vstack(fused_cloud)
-    logger.info(f"Fused cloud: {len(fused_cloud)} points")
-
-    # Downsample using voxel grid
-    fused_cloud = voxel_downsample(fused_cloud, voxel_size)
-    logger.info(f"After downsampling: {len(fused_cloud)} points")
-
-    return fused_cloud
+    logger.info(f"Fused map: {len(accumulated.points)} points from {n} keyframes")
+    return accumulated
 
 
-def voxel_downsample(cloud: np.ndarray, voxel_size: float) -> np.ndarray:
+def reconstruct_mesh(
+    cloud: o3d.geometry.PointCloud,
+    depth: int = _POISSON_DEPTH,
+) -> Optional[o3d.geometry.TriangleMesh]:
     """
-    Downsample point cloud using voxel grid.
+    Poisson surface reconstruction on a dense point cloud.
 
     Args:
-        cloud: Nx3 point cloud
-        voxel_size: Voxel size (meters)
+        cloud: Fused input cloud (normals estimated here).
+        depth: Poisson octree depth – higher → finer mesh, slower.
 
     Returns:
-        Downsampled Mx3 point cloud
+        Cleaned triangle mesh, or None if reconstruction fails.
     """
+    if len(cloud.points) < 100:
+        logger.warning(f"Too few points for meshing ({len(cloud.points)})")
+        return None
+
+    # Estimate oriented normals
+    cloud.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(
+            radius=_NORMAL_RADIUS, max_nn=_NORMAL_MAX_NN
+        )
+    )
+    cloud.orient_normals_consistent_tangent_plane(k=_ORIENT_K)
+
     try:
-        import open3d as o3d
-
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(cloud)
-        pcd_ds = pcd.voxel_down_sample(voxel_size)
-
-        return np.asarray(pcd_ds.points, dtype=np.float32)
-
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            cloud, depth=depth
+        )
     except Exception as e:
-        logger.warning(f"Open3D downsampling failed: {e}, using fallback")
-        return voxel_downsample_naive(cloud, voxel_size)
+        logger.error(f"Poisson reconstruction failed: {e}")
+        return None
+
+    # Remove low-density artefacts (open boundaries / noise)
+    densities_np = np.asarray(densities)
+    threshold = np.quantile(densities_np, _DENSITY_PRUNE_PCT)
+    vertices_to_remove = (densities_np < threshold).tolist()
+    mesh.remove_vertices_by_mask(vertices_to_remove)
+    mesh.remove_degenerate_triangles()
+    mesh.remove_unreferenced_vertices()
+
+    logger.info(
+        f"Mesh: {len(mesh.vertices)} vertices, {len(mesh.triangles)} triangles"
+    )
+    return mesh
 
 
-def voxel_downsample_naive(cloud: np.ndarray, voxel_size: float) -> np.ndarray:
+def save_results(
+    cloud: o3d.geometry.PointCloud,
+    mesh: Optional[o3d.geometry.TriangleMesh],
+    output_dir: Path,
+) -> Tuple[Path, Optional[Path], Optional[Path]]:
     """
-    Naive voxel downsampling (fallback if Open3D unavailable).
-    """
-    # Round to voxel grid
-    grid_points = np.round(cloud / voxel_size).astype(np.int32)
-
-    # Get unique voxels
-    unique_voxels, indices = np.unique(grid_points, axis=0, return_index=True)
-
-    # Return one point per voxel (the first point in that voxel)
-    return cloud[indices]
-
-
-def colorize_cloud(
-    cloud: np.ndarray,
-    scans: List[np.ndarray],
-    optimized_poses: np.ndarray,
-    images: List[np.ndarray],
-    intrinsics: dict,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Color a fused point cloud by projecting camera images.
-
-    Args:
-        cloud: Mx3 fused point cloud in world frame
-        scans: Original scans (for reprojection)
-        optimized_poses: Nx7 optimized poses
-        images: List of camera images
-        intrinsics: Dict of camera intrinsics {camera_name: {fx, fy, cx, cy, ...}}
+    Write cloud and mesh to output_dir/reconstruction/.
 
     Returns:
-        Tuple of (colored_cloud Mx3, colors Mx3 RGB)
-
-    TODO: implement full camera projection with visibility testing
+        (cloud_path, mesh_ply_path, mesh_obj_path) — mesh paths are None if
+        no mesh was produced.
     """
-    logger.warning("Point cloud colorization not yet fully implemented")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Placeholder: use height-based coloring
-    colors = np.zeros_like(cloud, dtype=np.uint8)
-    z_min = cloud[:, 2].min()
-    z_max = cloud[:, 2].max()
+    cloud_path = output_dir / "cloud_optimized.ply"
+    o3d.io.write_point_cloud(str(cloud_path), cloud)
+    logger.info(f"Cloud saved → {cloud_path} ({len(cloud.points)} pts)")
 
-    if z_max > z_min:
-        z_normalized = (cloud[:, 2] - z_min) / (z_max - z_min)
-        colors[:, 0] = (z_normalized * 255).astype(np.uint8)  # R
-        colors[:, 1] = ((1 - z_normalized) * 255).astype(np.uint8)  # G
-        colors[:, 2] = 128  # B
+    mesh_ply_path: Optional[Path] = None
+    mesh_obj_path: Optional[Path] = None
 
-    return cloud, colors
+    if mesh is not None:
+        mesh_ply_path = output_dir / "mesh.ply"
+        mesh_obj_path = output_dir / "mesh.obj"
+        o3d.io.write_triangle_mesh(str(mesh_ply_path), mesh)
+        o3d.io.write_triangle_mesh(str(mesh_obj_path), mesh)
+        logger.info(f"Mesh saved → {mesh_ply_path}")
+
+    return cloud_path, mesh_ply_path, mesh_obj_path
