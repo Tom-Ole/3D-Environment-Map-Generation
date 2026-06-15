@@ -17,7 +17,7 @@ from capture.lidar_client import LidarClientWrapper
 from capture.image_client import ImageClientWrapper
 from capture.state_client import StateClientWrapper
 from capture.types import LidarFrame, CameraFrame, RobotPose
-from recording.session import create_session, save_session_metadata, save_intrinsics
+from recording.session import create_session, save_session_metadata, save_intrinsics, save_extrinsics
 from recording.writer import DiskWriter
 
 logger = logging.getLogger(__name__)
@@ -224,22 +224,77 @@ class CaptureWorker(QThread):
             self.writer = DiskWriter(self.session)
             self.writer.start()
 
-            # Save intrinsics from image client if available
+            # Capture real intrinsics by requesting one image frame.
+            # The ImageClientWrapper already parses Kannala-Brandt parameters
+            # from the proto; we just need to read them from a live frame here
+            # rather than saving the old placeholder values (fx=1, fy=1, …).
             if self.image_client_wrapper:
-                intrinsics = {}
                 try:
-                    sources = self.image_client_wrapper.get_available_sources()
-                    for source in sources:
-                        intrinsics[source] = {
-                            "fx": 1.0,
-                            "fy": 1.0,
-                            "cx": 0.0,
-                            "cy": 0.0,
-                        }
+                    frames = self.image_client_wrapper.get_images()
+                    intrinsics = {}
+                    for frame in frames:
+                        if frame.fx is not None and frame.fy is not None:
+                            intrinsics[frame.source_name] = {
+                                "fx": float(frame.fx),
+                                "fy": float(frame.fy),
+                                "cx": float(frame.cx) if frame.cx is not None else 0.0,
+                                "cy": float(frame.cy) if frame.cy is not None else 0.0,
+                                "distortion": frame.distortion or {},
+                            }
                     if intrinsics:
                         save_intrinsics(self.session.session_path, intrinsics)
+                        logger.info(f"Saved real intrinsics for {list(intrinsics.keys())}")
+                    else:
+                        logger.warning("No intrinsics available from robot cameras")
                 except Exception as e:
                     logger.warning(f"Could not save intrinsics: {e}")
+
+            # Query the LiDAR-to-body extrinsic from the Spot frame tree.
+            # This transform is needed by the reconstruction pipeline to convert
+            # SPOT body-frame poses into LiDAR-frame poses before applying them
+            # to each scan.  We try several known EAP LiDAR frame names.
+            if self.state_client_wrapper:
+                try:
+                    from bosdyn.client.frame_helpers import get_a_tform_b
+                    state = self.state_client_wrapper.client.get_robot_state()
+                    frame_tree = state.kinematic_state.transforms_snapshot
+                    eap_frame_candidates = [
+                        "velodyne-point-cloud",
+                        "sensor/velodyne-point-cloud",
+                        "lidar",
+                        "lidar_mount",
+                    ]
+                    tform = None
+                    for frame_name in eap_frame_candidates:
+                        try:
+                            tform = get_a_tform_b(frame_tree, "body", frame_name)
+                            if tform is not None:
+                                logger.info(f"Found LiDAR frame: '{frame_name}'")
+                                break
+                        except Exception:
+                            continue
+
+                    if tform is not None:
+                        extrinsics = {
+                            "body_to_lidar": {
+                                "x": tform.position.x,
+                                "y": tform.position.y,
+                                "z": tform.position.z,
+                                "qx": tform.rot.x,
+                                "qy": tform.rot.y,
+                                "qz": tform.rot.z,
+                                "qw": tform.rot.w,
+                            }
+                        }
+                        save_extrinsics(self.session.session_path, extrinsics)
+                        logger.info(f"Saved LiDAR extrinsics: {extrinsics['body_to_lidar']}")
+                    else:
+                        logger.warning(
+                            "LiDAR frame not found in Spot frame tree — "
+                            "reconstruction will assume LiDAR == body origin"
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not save extrinsics: {e}")
 
             self.recording = True
             self.start_time = time.time()

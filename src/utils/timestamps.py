@@ -145,19 +145,16 @@ def interpolate_pose_to_timestamp(
     # Linear interpolation for position
     pos_interp = (1 - alpha) * positions[idx_prev] + alpha * positions[idx_next]
 
-    # SLERP for quaternion
+    # SLERP for quaternion — both input and output use scalar-last [x, y, z, w],
+    # which is scipy's native convention.  The previous code mistakenly reordered
+    # to [w, x, y, z] before passing to from_quat and then re-reordered the
+    # result incorrectly, producing a completely wrong rotation.
     from scipy.spatial.transform import Rotation, Slerp
 
-    q1_scipy = np.array([quaternions[idx_prev, 3], quaternions[idx_prev, 0], quaternions[idx_prev, 1], quaternions[idx_prev, 2]])
-    q2_scipy = np.array([quaternions[idx_next, 3], quaternions[idx_next, 0], quaternions[idx_next, 1], quaternions[idx_next, 2]])
-
-    slerp = Slerp([0, 1], Rotation.from_quat(np.array([q1_scipy, q2_scipy])))
-    quat_interp_scipy = slerp(alpha).as_quat()
-
-    # Convert back to scalar-last
-    quat_interp = np.array(
-        [quat_interp_scipy[1], quat_interp_scipy[2], quat_interp_scipy[3], quat_interp_scipy[0]]
-    )
+    q1 = quaternions[idx_prev]   # [x, y, z, w]
+    q2 = quaternions[idx_next]   # [x, y, z, w]
+    slerp = Slerp([0, 1], Rotation.from_quat(np.stack([q1, q2])))
+    quat_interp = slerp(alpha).as_quat()  # [x, y, z, w]
 
     return pos_interp, quat_interp
 

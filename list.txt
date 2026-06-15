@@ -172,3 +172,11 @@ Traceback (most recent call last):
     ^^^^^^^^^
 bosdyn.client.estop.EndpointMismatchError: bosdyn.api.RegisterEstopEndpointResponse (EndpointMismatchError): Target endpoint did not match.
 14:32:31 INFO [auto_3D] Starting estop check-in
+
+
+
+ `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=bool(use_amp)):
+C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\mast3r\dust3r\dust3r\model.py:206: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=False):
+C:\Users\Tom-o\Desktop\3D-Environment-Map-Generation\mast3r\dust3r\dust3r\inference.py:48: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.

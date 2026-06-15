@@ -5,7 +5,7 @@ import logging
 import threading
 from pathlib import Path
 from queue import Queue
-from typing import Optional
+from typing import Optional, Dict
 
 import numpy as np
 from open3d.geometry import PointCloud
@@ -38,8 +38,11 @@ class DiskWriter:
         self.running = False
         self.thread: Optional[threading.Thread] = None
 
-        # Buffer for poses (accumulated and saved periodically)
-        self.pose_buffer: list = []
+        # Full pose accumulator — never cleared between flushes so poses.npy
+        # always contains the complete trajectory, not just the last 100 rows.
+        self.pose_accumulator: list = []
+        # Small write-trigger buffer: flush to disk every 100 new poses.
+        self.pose_flush_buffer: list = []
         self.pose_lock = threading.Lock()
 
     def start(self) -> None:
@@ -72,12 +75,10 @@ class DiskWriter:
         if self.thread:
             self.thread.join(timeout=5.0)
 
-        # Save final metadata and poses
+        # Save all accumulated poses (full trajectory, not just the tail)
         with self.pose_lock:
-            if self.pose_buffer:
-                poses_array = np.array(self.pose_buffer)
-                save_poses(self.session.session_path, poses_array)
-                self.pose_buffer.clear()
+            if self.pose_accumulator:
+                save_poses(self.session.session_path, np.array(self.pose_accumulator))
 
         save_session_metadata(self.session)
         logger.info("Disk writer stopped")
@@ -124,7 +125,7 @@ class DiskWriter:
             logger.error(f"Failed to write {item_type}: {e}")
 
     def _write_lidar_frame(self, frame: LidarFrame) -> None:
-        """Write a LiDAR frame to disk as PLY."""
+        """Write a LiDAR frame to disk as PLY plus a timestamp sidecar JSON."""
         lidar_path = self.session.get_lidar_folder()
         frame_path = lidar_path / f"{frame.frame_id:05d}.ply"
 
@@ -137,10 +138,12 @@ class DiskWriter:
 
         write_point_cloud(str(frame_path), pcd)
 
-        # Also save raw data
-        raw_path = lidar_path / f"{frame.frame_id:05d}_raw.npy"
-        raw_data = np.column_stack((frame.points, frame.intensity))
-        np.save(raw_path, raw_data)
+        # Sidecar JSON: stores the capture timestamp so the reconstruction
+        # pipeline can match each scan to the correct SPOT pose by time rather
+        # than by array index (which assumes identical capture rates).
+        meta_path = lidar_path / f"{frame.frame_id:05d}.json"
+        with open(meta_path, "w") as f:
+            json.dump({"timestamp": frame.timestamp, "frame_id": frame.frame_id}, f)
 
         self.session.metadata.lidar_frame_count += 1
         logger.debug(f"Wrote LiDAR frame {frame.frame_id} to {frame_path}")
@@ -173,9 +176,8 @@ class DiskWriter:
         logger.debug(f"Wrote camera frame {frame.frame_id} ({frame.source_name})")
 
     def _write_pose(self, pose: RobotPose) -> None:
-        """Buffer a pose for batch writing."""
+        """Accumulate a pose and periodically flush the full trajectory to disk."""
         with self.pose_lock:
-            # Store as [timestamp, x, y, z, qx, qy, qz, qw]
             pose_row = np.array(
                 [
                     pose.timestamp,
@@ -189,13 +191,15 @@ class DiskWriter:
                 ],
                 dtype=np.float32,
             )
-            self.pose_buffer.append(pose_row)
+            self.pose_accumulator.append(pose_row)
+            self.pose_flush_buffer.append(pose_row)
             self.session.metadata.pose_frame_count += 1
 
-            # Flush every 100 poses
-            if len(self.pose_buffer) >= 100:
-                poses_array = np.array(self.pose_buffer)
-                save_poses(self.session.session_path, poses_array)
-                self.pose_buffer.clear()
+            # Flush the full accumulated trajectory every 100 new poses.
+            # Writing the complete array (not just the tail) ensures poses.npy
+            # is always a complete, loadable file even if the process is killed.
+            if len(self.pose_flush_buffer) >= 100:
+                save_poses(self.session.session_path, np.array(self.pose_accumulator))
+                self.pose_flush_buffer.clear()
 
         logger.debug(f"Buffered pose: {pose.position}")

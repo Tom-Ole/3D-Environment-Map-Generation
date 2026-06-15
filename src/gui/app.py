@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 from config import Config, load_config
 from gui.tabs.capture_tab import CaptureTab
 from gui.tabs.reconstruct_tab import ReconstructTab
+from gui.tabs.ai_reconstruct_tab import AIReconstructTab
 
 logger = logging.getLogger(__name__)
 
@@ -247,12 +248,13 @@ class MainWindow(QMainWindow):
         self.config = config
         self.capture_tab = None
         self.reconstruct_tab = None
+        self.ai_reconstruct_tab = None
 
         self.setup_ui()
 
     def setup_ui(self) -> None:
         """Setup main window UI."""
-        self.setWindowTitle("SPOT LiDAR 3D Capture & Reconstruction")
+        self.setWindowTitle("SPOT 3D Capture & Reconstruction — LiDAR-SLAM + AI")
         self.setGeometry(100, 100, 1400, 900)
 
         # Create main widget
@@ -267,9 +269,11 @@ class MainWindow(QMainWindow):
         # Create tabs
         self.capture_tab = CaptureTab(self.config)
         self.reconstruct_tab = ReconstructTab(self.config)
+        self.ai_reconstruct_tab = AIReconstructTab(self.config)
 
         self.tabs.addTab(self.capture_tab, "Capture")
-        self.tabs.addTab(self.reconstruct_tab, "Reconstruct")
+        self.tabs.addTab(self.reconstruct_tab, "LiDAR-SLAM")
+        self.tabs.addTab(self.ai_reconstruct_tab, "AI Reconstruction")
 
         main_layout.addWidget(self.tabs)
         main_widget.setLayout(main_layout)

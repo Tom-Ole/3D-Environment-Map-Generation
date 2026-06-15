@@ -65,4 +65,6 @@ htmlcov/
 # System files
 Thumbs.db
 
+mast3r/
+
 # Note: _output/ and __output/ are read-only reference data and are NOT ignored

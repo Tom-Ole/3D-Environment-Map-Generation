@@ -229,6 +229,66 @@ def list_lidar_scans(session_path: Path) -> list:
     return scan_files
 
 
+def load_lidar_timestamps(session_path: Path) -> dict:
+    """
+    Load per-scan capture timestamps from the sidecar JSON files.
+
+    Returns:
+        Dict mapping frame_id (int) → Unix timestamp (float).
+        Empty dict if no sidecar files are present (older sessions).
+    """
+    lidar_path = session_path / "lidar"
+    if not lidar_path.exists():
+        return {}
+
+    timestamps: dict = {}
+    for meta_file in sorted(lidar_path.glob("*.json")):
+        try:
+            with open(meta_file, "r") as f:
+                data = json.load(f)
+            frame_id = int(data["frame_id"])
+            timestamps[frame_id] = float(data["timestamp"])
+        except Exception as e:
+            logger.warning(f"Could not read LiDAR timestamp from {meta_file}: {e}")
+
+    logger.debug(f"Loaded timestamps for {len(timestamps)} LiDAR frames")
+    return timestamps
+
+
+def load_extrinsics(session_path: Path) -> dict:
+    """
+    Load sensor extrinsics from extrinsics.json.
+
+    Returns:
+        Dict with at least a "body_to_lidar" key containing
+        {x, y, z, qx, qy, qz, qw}.  Empty dict if file not found.
+    """
+    ext_path = session_path / "extrinsics.json"
+    if not ext_path.exists():
+        logger.warning(f"No extrinsics.json found in {session_path}")
+        return {}
+
+    with open(ext_path, "r") as f:
+        extrinsics = json.load(f)
+
+    logger.debug(f"Loaded extrinsics: {list(extrinsics.keys())}")
+    return extrinsics
+
+
+def save_extrinsics(session_path: Path, extrinsics: dict) -> None:
+    """
+    Save sensor extrinsics to extrinsics.json.
+
+    Args:
+        session_path: Path to session folder
+        extrinsics: Dict with sensor transform entries
+    """
+    ext_path = session_path / "extrinsics.json"
+    with open(ext_path, "w") as f:
+        json.dump(extrinsics, f, indent=2)
+    logger.debug(f"Saved extrinsics to {ext_path}")
+
+
 def list_images(session_path: Path) -> list:
     """
     List all images in a session.

@@ -31,6 +31,15 @@ class Config:
     lidar_sample_rate: float = 10.0  # Hz
     image_sample_rate: float = 5.0  # Hz (per camera)
 
+    # AI Reconstruction parameters
+    ai_model: str = "auto"             # "auto" | "mast3r" | "dust3r" | "vggt" | "geometric"
+    ai_device: str = "auto"            # "auto" | "cuda" | "mps" | "cpu"
+    ai_image_size: int = 512           # resize long edge to this (px)
+    ai_max_images: int = 100           # keyframe cap
+    ai_keyframe_interval: int = 5      # INTERVAL strategy: every Nth frame
+    ai_voxel_size: float = 0.05        # post-processing downsample (m)
+    ai_confidence_threshold: float = 1.5
+
     # Logging
     log_level: str = "INFO"
     log_file: Optional[Path] = None

@@ -50,7 +50,7 @@ class ReconstructTab(QWidget):
         main_layout = QHBoxLayout()
 
         # Control panel (left)
-        control_panel = QGroupBox("Reconstruction Controls")
+        control_panel = QGroupBox("LiDAR-SLAM Reconstruction Controls")
         control_layout = QVBoxLayout()
 
         # Session selection
@@ -121,21 +121,24 @@ class ReconstructTab(QWidget):
         info_text.setReadOnly(True)
         info_text.setText(
             """
-3D Reconstruction
+LiDAR-SLAM Reconstruction
 
-This tab allows you to:
-1. Select a previously recorded session
-2. Configure reconstruction parameters
-3. Run the offline reconstruction pipeline
-4. View progress and results
+This tab runs the LiDAR-based reconstruction pipeline using
+KISS-ICP odometry, pose-graph optimisation, and Poisson meshing.
 
-The pipeline performs:
-- Odometry estimation (KISS-ICP)
-- Loop closure detection
-- Global pose graph optimization
-- Point cloud fusion
-- Mesh generation
-- Results are saved in the session's reconstruction/ folder
+Steps performed:
+1. Load LiDAR scans + SPOT poses from the selected session
+2. KISS-ICP odometry (warm-started from SPOT VIO)
+3. Loop closure detection (spatial KD-tree proximity)
+4. Global pose-graph optimisation (Levenberg-Marquardt)
+5. Point cloud fusion at optimised poses
+6. Poisson surface mesh generation
+
+Outputs (in session/reconstruction/):
+  cloud_optimized.ply  — fused downsampled point cloud
+  mesh.ply / mesh.obj  — Poisson surface mesh
+
+For AI-based camera reconstruction, use the AI Reconstruction tab.
 
 Output directory: {}
         """.format(
