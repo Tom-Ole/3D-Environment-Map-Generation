@@ -9,6 +9,9 @@ from reconstruction.types import LoopClosureCandidate, LoopClosureResult
 
 logger = logging.getLogger(__name__)
 
+# Minimum ICP fitness to accept a loop closure registration.
+_MIN_FITNESS = 0.3
+
 
 def detect_loop_closures(
     poses: np.ndarray,
@@ -23,26 +26,26 @@ def detect_loop_closures(
     Args:
         poses: Nx7 odometry poses [t, x, y, z, qx, qy, qz, qw]
         scans: List of Nx3 point clouds
-        distance_threshold: Max distance for candidates (meters)
-        min_frame_gap: Min frames between candidate pairs
+        distance_threshold: Max distance between candidate poses (meters)
+        min_frame_gap: Minimum frame separation between candidate pairs
+        max_candidates_per_frame: Keep at most this many candidates per source frame
 
     Returns:
         List of LoopClosureCandidate objects
     """
     from scipy.spatial import cKDTree
+    from collections import defaultdict
 
     candidates = []
     positions = poses[:, 1:4]
 
     logger.info(
-        f"Detecting loop closures (threshold: {distance_threshold}m, gap: {min_frame_gap})"
+        f"Detecting loop closures (threshold={distance_threshold}m, gap={min_frame_gap})"
     )
 
     tree = cKDTree(positions)
     pairs = tree.query_pairs(distance_threshold)
 
-    # Group by source frame, keep closest max_candidates_per_frame per frame
-    from collections import defaultdict
     per_frame: dict = defaultdict(list)
     for i, j in pairs:
         if abs(j - i) < min_frame_gap:
@@ -64,73 +67,135 @@ def detect_loop_closures(
     return candidates
 
 
+def _make_o3d_pcd(pts: np.ndarray, voxel_size: float):
+    """Downsample pts and estimate normals; returns an Open3D PointCloud."""
+    import open3d as o3d
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pts)
+    pcd = pcd.voxel_down_sample(voxel_size)
+    pcd.estimate_normals(
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 2, max_nn=30)
+    )
+    return pcd
+
+
+def _fpfh_feature(pcd, voxel_size: float):
+    """Compute FPFH features for global registration."""
+    import open3d as o3d
+
+    return o3d.pipelines.registration.compute_fpfh_feature(
+        pcd,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 5, max_nn=100),
+    )
+
+
+def _ransac_global_registration(src_pcd, tgt_pcd, src_fpfh, tgt_fpfh, voxel_size: float):
+    """RANSAC-based global registration using FPFH features."""
+    import open3d as o3d
+
+    dist = voxel_size * 1.5
+    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        src_pcd,
+        tgt_pcd,
+        src_fpfh,
+        tgt_fpfh,
+        mutual_filter=True,
+        max_correspondence_distance=dist,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        ransac_n=3,
+        checkers=[
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(dist),
+        ],
+        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(100_000, 0.999),
+    )
+    return result
+
+
 def register_scan_pair(
     scan1: np.ndarray,
     scan2: np.ndarray,
     initial_transform: Optional[np.ndarray] = None,
     max_correspondence_distance: float = 0.1,
     iterations: int = 50,
-) -> Tuple[bool, Optional[np.ndarray]]:
+    voxel_size: float = 0.05,
+    use_fpfh_fallback: bool = True,
+) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray]]:
     """
-    Register two point clouds using ICP (via small_gicp or Open3D).
+    Register two point clouds with Point-to-Plane ICP.
+
+    Uses FPFH + RANSAC as a fallback initial alignment when the pose-seeded
+    guess appears unreliable (fitness below threshold after a first ICP pass).
 
     Args:
         scan1: Source Nx3 point cloud
         scan2: Target Nx3 point cloud
-        initial_transform: 4x4 initial transformation guess (optional)
-        max_correspondence_distance: Max correspondence distance (meters)
+        initial_transform: 4×4 initial transformation guess (optional)
+        max_correspondence_distance: ICP correspondence distance (meters)
         iterations: Number of ICP iterations
+        voxel_size: Voxel size used for downsampling and FPFH radius
+        use_fpfh_fallback: Try FPFH + RANSAC if pose-seeded ICP has low fitness
 
     Returns:
-        Tuple of (success, 7D transform [x, y, z, qx, qy, qz, qw])
-
-    TODO: integrate small_gicp for faster registration
+        Tuple of (success, transform_7d [x,y,z,qx,qy,qz,qw], information_6x6)
     """
+    import open3d as o3d
+
+    src_pcd = _make_o3d_pcd(scan1, voxel_size)
+    tgt_pcd = _make_o3d_pcd(scan2, voxel_size)
+
+    if initial_transform is None:
+        initial_transform = np.eye(4)
+
+    icp_p2plane = o3d.pipelines.registration.TransformationEstimationPointToPlane()
+    criteria = o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=iterations)
+
+    result = o3d.pipelines.registration.registration_icp(
+        src_pcd, tgt_pcd, max_correspondence_distance,
+        initial_transform, icp_p2plane, criteria,
+    )
+
+    # If the pose-seeded ICP gives poor fitness, try FPFH global registration
+    # as a fresh initial alignment and re-run ICP from there.
+    if result.fitness < _MIN_FITNESS and use_fpfh_fallback:
+        logger.debug("Pose-seeded ICP low fitness, trying FPFH global registration")
+        try:
+            src_fpfh = _fpfh_feature(src_pcd, voxel_size)
+            tgt_fpfh = _fpfh_feature(tgt_pcd, voxel_size)
+            ransac_result = _ransac_global_registration(
+                src_pcd, tgt_pcd, src_fpfh, tgt_fpfh, voxel_size
+            )
+            if ransac_result.fitness > 0.0:
+                result = o3d.pipelines.registration.registration_icp(
+                    src_pcd, tgt_pcd, max_correspondence_distance,
+                    ransac_result.transformation, icp_p2plane, criteria,
+                )
+        except Exception as e:
+            logger.debug(f"FPFH fallback failed: {e}")
+
+    if result.fitness < _MIN_FITNESS:
+        logger.debug(f"Registration rejected: fitness={result.fitness:.3f}")
+        return False, None, None
+
+    # Compute a proper 6×6 information matrix from point cloud overlap.
+    # This gives the optimizer a data-driven confidence for this edge rather
+    # than the previous fixed scalar multiple of identity.
     try:
-        import open3d as o3d
-
-        # Create point clouds
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(scan1)
-
-        pcd2 = o3d.geometry.PointCloud()
-        pcd2.points = o3d.utility.Vector3dVector(scan2)
-
-        # Initial transform (identity if not provided)
-        if initial_transform is None:
-            initial_transform = np.eye(4)
-
-        # Run ICP
-        result = o3d.pipelines.registration.registration_icp(
-            pcd1,
-            pcd2,
-            max_correspondence_distance,
-            initial_transform,
-            o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-            o3d.pipelines.registration.ICPConvergenceCriteria(
-                max_iteration=iterations
-            ),
+        info = o3d.pipelines.registration.get_information_matrix_from_point_clouds(
+            src_pcd, tgt_pcd, max_correspondence_distance, result.transformation
         )
+    except Exception:
+        info = np.eye(6) * result.fitness
 
-        if result.fitness < 0.3:
-            logger.warning(f"Low fitness in registration: {result.fitness:.3f}")
-            return False, None
+    T = result.transformation
+    from scipy.spatial.transform import Rotation
+    pos = T[:3, 3]
+    quat = Rotation.from_matrix(T[:3, :3]).as_quat()  # [x, y, z, w]
+    transform_7d = np.array([pos[0], pos[1], pos[2], quat[0], quat[1], quat[2], quat[3]])
 
-        # Extract transform as 7D vector
-        T = result.transformation
-        pos = T[:3, 3]
-        quat = matrix_to_quaternion(T[:3, :3])
-
-        transform_7d = np.array(
-            [pos[0], pos[1], pos[2], quat[0], quat[1], quat[2], quat[3]]
-        )
-
-        logger.debug(f"ICP registration: fitness={result.fitness:.4f}")
-        return True, transform_7d
-
-    except Exception as e:
-        logger.error(f"Failed to register scan pair: {e}")
-        return False, None
+    logger.debug(f"ICP registered: fitness={result.fitness:.4f}, rmse={result.inlier_rmse:.4f}")
+    return True, transform_7d, info
 
 
 def process_loop_closures(
@@ -138,25 +203,30 @@ def process_loop_closures(
     scans: List[np.ndarray],
     poses: np.ndarray,
     max_correspondence_distance: float = 0.1,
+    voxel_size: float = 0.05,
 ) -> LoopClosureResult:
     """
-    Process loop closure candidates and register valid pairs.
+    Register all loop closure candidates and collect transforms + information matrices.
 
     Args:
         candidates: List of LoopClosureCandidate objects
         scans: List of point clouds
-        poses: Nx7 odometry poses
+        poses: Nx7 or Nx8 odometry poses
         max_correspondence_distance: Max ICP correspondence distance
+        voxel_size: Voxel size for downsampling / FPFH radius
 
     Returns:
-        LoopClosureResult with registered pairs
+        LoopClosureResult with registered_pairs and information_matrices populated
     """
-    # relative_pose(a, b) = T_a_world * T_world_b = transforms b-frame → a-frame.
-    # ICP(source, target, init) needs init that maps source → target frame.
-    # So init = relative_pose(tgt, src) = T_tgt_src (source scan → target frame).
     from reconstruction.global_opt import transform_7d_to_4x4, relative_pose as _rel
 
-    result = LoopClosureResult(candidates=candidates, registered_pairs={})
+    # Strip optional timestamp column so we always work with 7D [x,y,z,q…]
+    if poses.shape[1] == 8:
+        pose_data = poses[:, 1:]
+    else:
+        pose_data = poses
+
+    result = LoopClosureResult(candidates=candidates, registered_pairs={}, information_matrices={})
 
     for candidate in candidates:
         src_idx = candidate.source_idx
@@ -164,58 +234,35 @@ def process_loop_closures(
 
         if src_idx >= len(scans) or tgt_idx >= len(scans):
             continue
+        if src_idx >= len(pose_data) or tgt_idx >= len(pose_data):
+            continue
 
-        src_7d = poses[src_idx, 1:]  # [x, y, z, qx, qy, qz, qw]
-        tgt_7d = poses[tgt_idx, 1:]
-        rel_7d = _rel(tgt_7d, src_7d)  # T_tgt_src: source scan → target frame
+        # Build initial guess: transform that maps source scan into target frame.
+        # relative_pose(A, B) = inv(A) * B, so relative_pose(tgt, src) gives
+        # T_{tgt←src} which maps source-frame points into target frame — exactly
+        # what ICP needs as its initial transform.
+        rel_7d = _rel(pose_data[tgt_idx], pose_data[src_idx])
         initial_transform = transform_7d_to_4x4(rel_7d)
 
-        # Try registration with pose-seeded initial guess
-        success, transform_7d = register_scan_pair(
+        success, transform_7d, info = register_scan_pair(
             scans[src_idx],
             scans[tgt_idx],
             initial_transform=initial_transform,
             max_correspondence_distance=max_correspondence_distance,
+            voxel_size=voxel_size,
         )
 
         if success and transform_7d is not None:
             result.registered_pairs[(src_idx, tgt_idx)] = transform_7d
+            result.information_matrices[(src_idx, tgt_idx)] = info
             result.loop_count += 1
-            logger.debug(
-                f"Loop closure registered: {src_idx} -> {tgt_idx}"
-            )
+            logger.debug(f"Loop closure registered: {src_idx} → {tgt_idx}")
 
-    logger.info(f"Registered {result.loop_count} loop closures")
+    logger.info(f"Registered {result.loop_count}/{len(candidates)} loop closures")
     return result
 
 
 def matrix_to_quaternion(R: np.ndarray) -> np.ndarray:
-    """Convert 3x3 rotation matrix to quaternion (scalar-last: [x, y, z, w])."""
-    trace = np.trace(R)
-
-    if trace > 0:
-        S = 2.0 * np.sqrt(trace + 1.0)
-        w = 0.25 * S
-        x = (R[2, 1] - R[1, 2]) / S
-        y = (R[0, 2] - R[2, 0]) / S
-        z = (R[1, 0] - R[0, 1]) / S
-    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-        S = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
-        w = (R[2, 1] - R[1, 2]) / S
-        x = 0.25 * S
-        y = (R[0, 1] + R[1, 0]) / S
-        z = (R[0, 2] + R[2, 0]) / S
-    elif R[1, 1] > R[2, 2]:
-        S = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
-        w = (R[0, 2] - R[2, 0]) / S
-        x = (R[0, 1] + R[1, 0]) / S
-        y = 0.25 * S
-        z = (R[1, 2] + R[2, 1]) / S
-    else:
-        S = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
-        w = (R[1, 0] - R[0, 1]) / S
-        x = (R[0, 2] + R[2, 0]) / S
-        y = (R[1, 2] + R[2, 1]) / S
-        z = 0.25 * S
-
-    return np.array([x, y, z, w])
+    """Convert 3×3 rotation matrix to quaternion (scalar-last: [x, y, z, w])."""
+    from scipy.spatial.transform import Rotation
+    return Rotation.from_matrix(R).as_quat()

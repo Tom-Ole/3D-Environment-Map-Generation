@@ -31,8 +31,15 @@ class LoopClosureResult:
     """Result of loop closure detection and registration."""
 
     candidates: list  # List of LoopClosureCandidate
-    registered_pairs: dict  # {(src, tgt): (relative_transform_7d)}
+    registered_pairs: dict  # {(src, tgt): relative_transform_7d}
+    # Per-edge 6×6 information matrices derived from ICP covariance.
+    # Used by the pose graph optimizer instead of a fixed scalar identity matrix.
+    information_matrices: dict = None  # {(src, tgt): np.ndarray shape (6,6)}
     loop_count: int = 0
+
+    def __post_init__(self):
+        if self.information_matrices is None:
+            self.information_matrices = {}
 
 
 @dataclass
