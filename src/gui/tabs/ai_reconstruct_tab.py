@@ -78,36 +78,48 @@ class AIReconstructTab(QWidget):
 
         # ── Left panel: controls ──────────────────────────────────────────────
         controls = QGroupBox("AI Reconstruction Controls")
-        ctrl_layout = QVBoxLayout()
+        ctrl_outer = QVBoxLayout()
+
+        # Scrollable area holds all form controls so they keep their natural
+        # height on fullscreen instead of being compressed by the expanding log.
+        scroll_content = QWidget()
+        ctrl_layout = QVBoxLayout(scroll_content)
+        ctrl_layout.setSpacing(6)
 
         # Session selection
         sess_row = QHBoxLayout()
         self._session_input = QLineEdit()
         self._session_input.setReadOnly(True)
         self._session_input.setPlaceholderText("Select a recorded session folder…")
+        self._session_input.setMinimumHeight(30)
         sess_row.addWidget(self._session_input)
         browse_btn = QPushButton("Browse…")
+        browse_btn.setMinimumHeight(30)
         browse_btn.clicked.connect(self._on_browse)
         sess_row.addWidget(browse_btn)
         ctrl_layout.addLayout(sess_row)
 
         # Parameters form
         form = QFormLayout()
+        form.setSpacing(6)
 
         # Model
         self._model_combo = QComboBox()
+        self._model_combo.setMinimumHeight(30)
         for key, label in _MODEL_OPTIONS:
             self._model_combo.addItem(label, userData=key)
         form.addRow("Model:", self._model_combo)
 
         # Device
         self._device_combo = QComboBox()
+        self._device_combo.setMinimumHeight(30)
         for key, label in _DEVICE_OPTIONS:
             self._device_combo.addItem(label, userData=key)
         form.addRow("Device:", self._device_combo)
 
         # Image size
         self._size_combo = QComboBox()
+        self._size_combo.setMinimumHeight(30)
         for s in _IMAGE_SIZES:
             self._size_combo.addItem(f"{s} px", userData=s)
         self._size_combo.setCurrentIndex(_IMAGE_SIZES.index(512))
@@ -115,6 +127,7 @@ class AIReconstructTab(QWidget):
 
         # Max images
         self._max_images_spin = QSpinBox()
+        self._max_images_spin.setMinimumHeight(30)
         self._max_images_spin.setRange(4, 500)
         self._max_images_spin.setValue(100)
         self._max_images_spin.setSuffix(" frames")
@@ -122,6 +135,7 @@ class AIReconstructTab(QWidget):
 
         # Keyframe strategy
         self._strategy_combo = QComboBox()
+        self._strategy_combo.setMinimumHeight(30)
         self._strategy_combo.addItem("Interval (every N frames)", userData="interval")
         self._strategy_combo.addItem("Motion (translation / rotation threshold)", userData="motion")
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
@@ -129,6 +143,7 @@ class AIReconstructTab(QWidget):
 
         # Interval spinbox (visible when strategy = interval)
         self._interval_spin = QSpinBox()
+        self._interval_spin.setMinimumHeight(30)
         self._interval_spin.setRange(1, 50)
         self._interval_spin.setValue(5)
         self._interval_label = QLabel("Keyframe interval:")
@@ -136,6 +151,7 @@ class AIReconstructTab(QWidget):
 
         # Motion thresholds (visible when strategy = motion)
         self._min_trans_spin = QDoubleSpinBox()
+        self._min_trans_spin.setMinimumHeight(30)
         self._min_trans_spin.setRange(0.05, 5.0)
         self._min_trans_spin.setSingleStep(0.05)
         self._min_trans_spin.setValue(0.30)
@@ -144,6 +160,7 @@ class AIReconstructTab(QWidget):
         form.addRow(self._min_trans_label, self._min_trans_spin)
 
         self._min_rot_spin = QDoubleSpinBox()
+        self._min_rot_spin.setMinimumHeight(30)
         self._min_rot_spin.setRange(1.0, 90.0)
         self._min_rot_spin.setSingleStep(1.0)
         self._min_rot_spin.setValue(10.0)
@@ -153,6 +170,7 @@ class AIReconstructTab(QWidget):
 
         # Voxel downsample
         self._voxel_spin = QDoubleSpinBox()
+        self._voxel_spin.setMinimumHeight(30)
         self._voxel_spin.setRange(0.0, 1.0)
         self._voxel_spin.setSingleStep(0.01)
         self._voxel_spin.setValue(0.05)
@@ -161,6 +179,7 @@ class AIReconstructTab(QWidget):
 
         # Confidence threshold (DUSt3R / MASt3R)
         self._conf_spin = QDoubleSpinBox()
+        self._conf_spin.setMinimumHeight(30)
         self._conf_spin.setRange(0.0, 10.0)
         self._conf_spin.setSingleStep(0.1)
         self._conf_spin.setValue(1.5)
@@ -183,11 +202,13 @@ class AIReconstructTab(QWidget):
         # Run / Stop buttons
         btn_row = QHBoxLayout()
         self._run_btn = QPushButton("Run AI Reconstruction")
+        self._run_btn.setMinimumHeight(30)
         self._run_btn.clicked.connect(self._on_run)
         self._run_btn.setEnabled(False)
         btn_row.addWidget(self._run_btn)
 
         self._stop_btn = QPushButton("Stop")
+        self._stop_btn.setMinimumHeight(30)
         self._stop_btn.clicked.connect(self._on_stop)
         self._stop_btn.setEnabled(False)
         btn_row.addWidget(self._stop_btn)
@@ -211,13 +232,23 @@ class AIReconstructTab(QWidget):
         self._stage_bar.setFormat("Stage: %p%")
         ctrl_layout.addWidget(self._stage_bar)
 
-        # Log display
+        # Spacer absorbs any extra vertical space so form rows stay natural height
+        ctrl_layout.addStretch(1)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(scroll_content)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        ctrl_outer.addWidget(scroll_area, 1)
+
+        # Log display lives outside the scroll area and expands freely
         self._log = QTextEdit()
         self._log.setReadOnly(True)
-        self._log.setMinimumHeight(200)
-        ctrl_layout.addWidget(self._log)
+        self._log.setMinimumHeight(150)
+        self._log.setMaximumHeight(350)
+        ctrl_outer.addWidget(self._log)
 
-        controls.setLayout(ctrl_layout)
+        controls.setLayout(ctrl_outer)
         root.addWidget(controls, 3)
 
         # ── Right panel: info ─────────────────────────────────────────────────

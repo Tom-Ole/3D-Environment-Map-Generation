@@ -62,8 +62,8 @@ def run_odometry(
             # Degenerate scan – propagate last known pose
             poses.append(poses[-1].copy() if poses else np.eye(4))
         else:
-            odometry.register_frame(pts)
-            poses.append(odometry.poses[-1].copy())
+            odometry.register_frame(pts, np.array([]))
+            poses.append(odometry.last_pose.copy())
 
         if progress_cb:
             progress_cb(i + 1, n)
