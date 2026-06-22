@@ -127,6 +127,12 @@ class ReconstructionPipeline:
 
             output_dir = self.session_path / "reconstruction"
             save_results(cloud, mesh, output_dir)
+
+            # Save keyframe poses and frame IDs so the colorization step can
+            # use SLAM-frame camera positions without re-running the pipeline.
+            kf_frame_ids = [frames[i].frame_id for i in kf_indices]
+            _save_keyframe_data(output_dir, optimized_poses, kf_frame_ids)
+
             self._emit(6, "fusion", 100.0, f"Results saved to {output_dir.name}/")
 
             elapsed = time.time() - t_start
@@ -245,6 +251,19 @@ def _select_keyframes(poses: List[np.ndarray]) -> List[int]:
         indices.append(len(poses) - 1)
 
     return indices
+
+
+def _save_keyframe_data(
+    output_dir: Path,
+    kf_poses: List[np.ndarray],
+    kf_indices: List[int],
+) -> None:
+    """Persist keyframe poses (Mx4x4) and LiDAR frame IDs (M,) for colorization."""
+    poses_arr = np.stack(kf_poses, axis=0)  # M×4×4
+    fids_arr = np.array(kf_indices, dtype=np.int32)
+    np.save(str(output_dir / "keyframe_poses.npy"), poses_arr)
+    np.save(str(output_dir / "keyframe_frame_ids.npy"), fids_arr)
+    logger.info(f"Saved {len(kf_poses)} keyframe poses to {output_dir}")
 
 
 def _rotation_angle(R: np.ndarray) -> float:
