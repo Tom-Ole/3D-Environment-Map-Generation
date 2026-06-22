@@ -53,7 +53,12 @@ class Config:
 
 def load_config(args: Optional[argparse.Namespace] = None) -> Config:
     """
-    Load configuration with precedence: CLI args > .env > interactive prompt.
+    Load configuration with precedence: CLI args > .env > defaults.
+
+    Robot credentials are optional; when absent the GUI capture tab shows the
+    last-used hostname and prompts the user before actually connecting.
+    Interactive stdin prompts are only issued when --interactive is passed
+    (intended for headless / script use, not GUI launches).
 
     Args:
         args: Parsed CLI arguments (if None, parse from sys.argv)
@@ -67,31 +72,30 @@ def load_config(args: Optional[argparse.Namespace] = None) -> Config:
     # Step 1: Load .env file
     load_dotenv()
 
-    # Step 2: Resolve hostname (CLI > .env > prompt)
-    hostname = args.hostname or os.getenv("BOSDYN_HOSTNAME")
-    if not hostname:
-        hostname = input("Enter robot hostname [default: 192.168.10.3]: ").strip()
-        if not hostname:
-            hostname = "192.168.10.3"
+    # Step 2: Resolve robot credentials (CLI > .env > default)
+    hostname = args.hostname or os.getenv("BOSDYN_HOSTNAME", "192.168.10.3")
+    username = args.username or os.getenv("BOSDYN_USERNAME", "student")
+    password = args.password or os.getenv("BOSDYN_PASSWORD", "")
 
-    # Step 3: Resolve username (CLI > .env > prompt)
-    username = args.username or os.getenv("BOSDYN_USERNAME")
-    if not username:
-        username = input("Enter robot username [default: student]: ").strip()
-        if not username:
-            username = "student"
+    # Step 3: Interactive prompts only in --interactive / CLI mode
+    interactive = getattr(args, "interactive", False)
+    if interactive:
+        if not hostname or hostname == "192.168.10.3":
+            val = input("Enter robot hostname [default: 192.168.10.3]: ").strip()
+            if val:
+                hostname = val
+        if not username or username == "student":
+            val = input("Enter robot username [default: student]: ").strip()
+            if val:
+                username = val
+        if not password:
+            import getpass
+            password = getpass.getpass("Enter robot password: ")
 
-    # Step 4: Resolve password (CLI > .env > prompt)
-    password = args.password or os.getenv("BOSDYN_PASSWORD")
-    if not password:
-        import getpass
-
-        password = getpass.getpass("Enter robot password: ")
-
-    # Step 5: Resolve output directory
+    # Step 4: Resolve output directory
     output_dir = Path(args.output_dir) if args.output_dir else Path("recordings")
 
-    # Step 6: Build config
+    # Step 5: Build config
     config = Config(
         robot_hostname=hostname,
         robot_username=username,
@@ -179,6 +183,14 @@ def parse_args() -> argparse.Namespace:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level",
+    )
+
+    # Interactive mode (for CLI / headless use — not needed when launched as GUI)
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        default=False,
+        help="Prompt for robot credentials on stdin if not set via args or .env",
     )
 
     return parser.parse_args()

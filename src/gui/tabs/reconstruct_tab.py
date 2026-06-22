@@ -1,6 +1,8 @@
 """Reconstruct tab UI."""
 
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +24,7 @@ from PySide6.QtCore import Qt, Signal, Slot
 
 from config import Config
 from gui.workers.reconstruct_worker import ReconstructWorker
+from gui.workers.colorize_worker import ColorizeWorker
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +44,9 @@ class ReconstructTab(QWidget):
         super().__init__()
         self.config = config
         self.reconstruct_worker: Optional[ReconstructWorker] = None
+        self.colorize_worker: Optional[ColorizeWorker] = None
         self.selected_session: Optional[Path] = None
+        self._last_colored_ply: Optional[Path] = None
 
         self.setup_ui()
 
@@ -96,6 +101,20 @@ class ReconstructTab(QWidget):
         self.stop_btn.clicked.connect(self.on_stop_reconstruction)
         self.stop_btn.setEnabled(False)
         button_layout.addWidget(self.stop_btn)
+
+        self.colorize_btn = QPushButton("Colorize Mesh")
+        self.colorize_btn.setToolTip(
+            "Project camera images onto the reconstructed mesh vertices"
+        )
+        self.colorize_btn.clicked.connect(self.on_colorize_mesh)
+        self.colorize_btn.setEnabled(False)
+        button_layout.addWidget(self.colorize_btn)
+
+        self.view_btn = QPushButton("View Results")
+        self.view_btn.setToolTip("Open reconstruction results in Open3D viewer")
+        self.view_btn.clicked.connect(self.on_view_results)
+        self.view_btn.setEnabled(False)
+        button_layout.addWidget(self.view_btn)
 
         control_layout.addLayout(button_layout)
 
@@ -168,6 +187,12 @@ Output directory: {}
             self.session_input.setText(str(self.selected_session))
             self.run_btn.setEnabled(True)
             logger.info(f"Selected session: {self.selected_session}")
+            # Enable post-processing buttons if prior outputs already exist
+            recon_dir = self.selected_session / "reconstruction"
+            has_mesh = (recon_dir / "mesh.ply").exists() or (recon_dir / "mesh.obj").exists()
+            has_images = (self.selected_session / "images").exists()
+            self.colorize_btn.setEnabled(has_mesh and has_images)
+            self.view_btn.setEnabled(has_mesh)
 
     @Slot()
     def on_run_reconstruction(self) -> None:
@@ -230,11 +255,96 @@ Output directory: {}
         self.log_display.append("\nReconstruction complete!")
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        # Enable post-processing buttons if outputs exist
+        if self.selected_session:
+            recon_dir = self.selected_session / "reconstruction"
+            has_mesh = (recon_dir / "mesh.ply").exists() or (recon_dir / "mesh.obj").exists()
+            has_images = (self.selected_session / "images").exists()
+            self.colorize_btn.setEnabled(has_mesh and has_images)
+            self.view_btn.setEnabled(has_mesh)
 
     @Slot(str)
     def on_error(self, error_msg: str) -> None:
-        """Handle error."""
+        """Handle reconstruction error."""
         logger.error(f"Reconstruction error: {error_msg}")
         self.log_display.append(f"\nError: {error_msg}")
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+
+    # ------------------------------------------------------------------
+    # Colorize
+    # ------------------------------------------------------------------
+
+    @Slot()
+    def on_colorize_mesh(self) -> None:
+        """Start mesh colorization in a background thread."""
+        if not self.selected_session:
+            return
+        recon_dir = self.selected_session / "reconstruction"
+        poses_file = recon_dir / "keyframe_poses.npy"
+        if not poses_file.exists():
+            self.log_display.append(
+                "\nNo keyframe_poses.npy found — re-run reconstruction first."
+            )
+            return
+
+        logger.info("Starting colorization…")
+        self.log_display.append("\nStarting colorization…")
+        self.colorize_btn.setEnabled(False)
+        self.view_btn.setEnabled(False)
+
+        self.colorize_worker = ColorizeWorker(session_path=self.selected_session)
+        self.colorize_worker.finished.connect(self._on_colorize_finished)
+        self.colorize_worker.error.connect(self._on_colorize_error)
+        self.colorize_worker.log.connect(self.log_display.append)
+        self.colorize_worker.start()
+
+    @Slot(str)
+    def _on_colorize_finished(self, ply_path: str) -> None:
+        self._last_colored_ply = Path(ply_path)
+        self.log_display.append(f"Coloured mesh → {ply_path}")
+        self.colorize_btn.setEnabled(True)
+        self.view_btn.setEnabled(True)
+
+    @Slot(str)
+    def _on_colorize_error(self, msg: str) -> None:
+        self.log_display.append(f"\nColorization error: {msg}")
+        self.colorize_btn.setEnabled(True)
+
+    # ------------------------------------------------------------------
+    # Visualization
+    # ------------------------------------------------------------------
+
+    @Slot()
+    def on_view_results(self) -> None:
+        """Open reconstruction results in the Open3D standalone viewer."""
+        if not self.selected_session:
+            return
+        recon_dir = self.selected_session / "reconstruction"
+
+        # Prefer coloured mesh, then plain PLY, then OBJ
+        candidates = [
+            recon_dir / "mesh_colored.ply",
+            recon_dir / "mesh.ply",
+            recon_dir / "cloud_optimized.ply",
+            recon_dir / "mesh.obj",
+        ]
+        target = next((p for p in candidates if p.exists()), None)
+        if target is None:
+            self.log_display.append("\nNo output file found to visualize.")
+            return
+
+        self.log_display.append(f"\nOpening viewer for: {target.name}")
+        try:
+            subprocess.Popen(
+                [sys.executable, "-c",
+                 f"import open3d as o3d; "
+                 f"g = o3d.io.read_triangle_mesh(r'{target}') "
+                 f"if r'{target}'.endswith(('.ply','.obj')) else "
+                 f"o3d.io.read_point_cloud(r'{target}'); "
+                 f"o3d.visualization.draw_geometries([g], "
+                 f"window_name='{target.name}', width=1280, height=720)"],
+                creationflags=getattr(__import__('subprocess'), 'CREATE_NO_WINDOW', 0),
+            )
+        except Exception as exc:
+            self.log_display.append(f"Could not open viewer: {exc}")

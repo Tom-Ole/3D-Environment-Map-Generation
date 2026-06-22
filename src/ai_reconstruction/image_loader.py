@@ -125,7 +125,9 @@ def load_image_rgb(path: Path, target_size: Optional[int] = None) -> np.ndarray:
     img = cv2.imread(str(path))
     if img is None:
         raise IOError(f"Failed to load image: {path}")
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # DiskWriter saves images as RGB (BGR→RGB before imwrite), so imread bytes
+    # are already [R,G,B] — no cvtColor needed; a second swap would invert them.
+    img_rgb = img
 
     if target_size is not None:
         h, w = img_rgb.shape[:2]

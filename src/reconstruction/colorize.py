@@ -125,7 +125,7 @@ def colorize_mesh(
     if not images_dir.exists():
         raise FileNotFoundError(f"No images/ folder in {session_path}")
 
-    image_index = _build_image_index(images_dir, cameras)
+    image_index = _build_image_index(images_dir, cameras, max_images_per_camera)
     logger.info(
         f"Image index: {sum(len(v) for v in image_index.values())} images "
         f"across {len(image_index)} frame_ids"
@@ -140,8 +140,6 @@ def colorize_mesh(
             continue
 
         for source_name, img_path in cam_images:
-            if max_images_per_camera is not None:
-                pass  # enforced via image_index slicing below
 
             img = _load_image(img_path, source_name)
             if img is None:
@@ -293,12 +291,19 @@ def _get_camera_intrinsics(
 # ---------------------------------------------------------------------------
 
 def _build_image_index(
-    images_dir: Path, cameras: Optional[List[str]]
+    images_dir: Path,
+    cameras: Optional[List[str]],
+    max_images_per_camera: Optional[int] = None,
 ) -> Dict[int, List[Tuple[str, Path]]]:
-    """Return {frame_id: [(source_name, path), ...]} for all images."""
-    index: Dict[int, List[Tuple[str, Path]]] = {}
+    """Return {frame_id: [(source_name, path), ...]} for all images.
+
+    When max_images_per_camera is set, only the first N frame_ids for each
+    camera source are included, uniformly spaced across the full timeline.
+    """
+    # Collect per-camera sorted lists first so we can apply the cap
+    per_camera: Dict[str, List[Tuple[int, Path]]] = {}
     for img_path in sorted(images_dir.glob("*.png")):
-        stem = img_path.stem            # e.g. "00042_frontleft_fisheye_image"
+        stem = img_path.stem
         parts = stem.split("_", 1)
         if len(parts) != 2:
             continue
@@ -309,7 +314,17 @@ def _build_image_index(
         src = parts[1]
         if cameras and src not in cameras:
             continue
-        index.setdefault(fid, []).append((src, img_path))
+        per_camera.setdefault(src, []).append((fid, img_path))
+
+    index: Dict[int, List[Tuple[str, Path]]] = {}
+    for src, entries in per_camera.items():
+        entries.sort(key=lambda x: x[0])
+        if max_images_per_camera is not None and len(entries) > max_images_per_camera:
+            # Uniformly sample across timeline instead of just taking the first N
+            step = len(entries) / max_images_per_camera
+            entries = [entries[int(i * step)] for i in range(max_images_per_camera)]
+        for fid, img_path in entries:
+            index.setdefault(fid, []).append((src, img_path))
     return index
 
 
@@ -329,12 +344,20 @@ def _find_images_for_frame(
 
 
 def _load_image(path: Path, source_name: str) -> Optional[np.ndarray]:
-    """Load image as float32 RGB (0-1), undoing the on-disk rotation."""
+    """Load image as float32 RGB (0-1), undoing the on-disk rotation.
+
+    DiskWriter saves images by converting BGR → RGB before cv2.imwrite, so the
+    bytes on disk are already in R-G-B order.  cv2.imread reads those bytes into
+    its array without reordering, meaning array[y,x] = [R, G, B] — which is
+    already correct RGB despite OpenCV's BGR convention.  A second BGR↔RGB swap
+    here would invert the channels, so we deliberately skip it.
+    """
     img = cv2.imread(str(path), cv2.IMREAD_COLOR)
     if img is None:
         logger.warning(f"Could not read {path}")
         return None
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Do NOT cvtColor(BGR2RGB): the file was saved as RGB by DiskWriter;
+    # imread gives us the correct [R,G,B] bytes already.
 
     inv_rot = _CAMERA_ROTATION_INVERSE.get(source_name)
     if inv_rot is not None:

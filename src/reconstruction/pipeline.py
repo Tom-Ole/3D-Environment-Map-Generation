@@ -31,6 +31,9 @@ from reconstruction.io import (
     load_scan_frames,
     load_point_cloud,
     load_spot_poses,
+    load_extrinsics_as_matrix,
+    interpolate_spot_pose,
+    pose_row_to_matrix,
 )
 from reconstruction.odometry import run_odometry
 from reconstruction.loop_closure import detect_loop_closures
@@ -92,11 +95,23 @@ class ReconstructionPipeline:
             self._emit(1, "load_data", 0.0, "Loading LiDAR scans…")
             frames = load_scan_frames(self.session_path)
             spot_poses = load_spot_poses(self.session_path)
+
+            # Compute per-scan VIO poses in LiDAR frame for warm-start.
+            # T_world_lidar = T_world_body @ T_body_lidar
+            T_body_lidar = load_extrinsics_as_matrix(self.session_path)
+            vio_lidar_poses = _compute_vio_lidar_poses(
+                frames, spot_poses, T_body_lidar
+            )
+            if vio_lidar_poses:
+                logger.info(
+                    f"VIO warm-start: {len(vio_lidar_poses)} LiDAR-frame poses ready"
+                )
+
             self._emit(1, "load_data", 100.0, f"Loaded {len(frames)} scans")
 
             # Stage 2 – KISS-ICP odometry
             self._emit(2, "odometry", 0.0, "Starting KISS-ICP odometry…")
-            all_poses = self._run_odometry(frames)
+            all_poses = self._run_odometry(frames, vio_lidar_poses)
             self._emit(2, "odometry", 100.0, f"Estimated {len(all_poses)} poses")
 
             # Stage 3 – keyframe selection
@@ -147,9 +162,11 @@ class ReconstructionPipeline:
     # Stage implementations
     # ------------------------------------------------------------------
 
-    def _run_odometry(self, frames: List[ScanFrame]) -> List[np.ndarray]:
-        n = len(frames)
-
+    def _run_odometry(
+        self,
+        frames: List[ScanFrame],
+        vio_poses: Optional[List[np.ndarray]] = None,
+    ) -> List[np.ndarray]:
         def _progress(done: int, total: int) -> None:
             pct = done / total * 100.0
             self._emit(2, "odometry", pct, f"Frame {done}/{total}")
@@ -162,6 +179,7 @@ class ReconstructionPipeline:
             frames,
             load_cloud_fn=load_point_cloud,
             voxel_size=kiss_voxel,
+            vio_poses=vio_poses,
             progress_cb=_progress,
         )
 
@@ -224,6 +242,37 @@ class ReconstructionPipeline:
 # ------------------------------------------------------------------
 # Module-level helpers
 # ------------------------------------------------------------------
+
+def _compute_vio_lidar_poses(
+    frames: List[ScanFrame],
+    spot_poses: Optional[np.ndarray],
+    T_body_lidar: Optional[np.ndarray],
+) -> Optional[List[np.ndarray]]:
+    """
+    Compute per-scan LiDAR-frame VIO poses from SPOT body poses.
+
+    Returns a list of 4×4 SE(3) matrices (one per scan frame) in the SPOT
+    vision frame expressed in the LiDAR coordinate system:
+        T_vision_lidar[i] = T_vision_body(ts_i) @ T_body_lidar
+
+    Returns None if SPOT poses or the extrinsic are unavailable.
+    """
+    if spot_poses is None or T_body_lidar is None:
+        return None
+    if len(spot_poses) < 2:
+        return None
+
+    vio_poses = []
+    for frame in frames:
+        try:
+            T_vision_body = interpolate_spot_pose(frame.timestamp, spot_poses)
+            T_vision_lidar = T_vision_body @ T_body_lidar
+            vio_poses.append(T_vision_lidar)
+        except Exception:
+            vio_poses.append(None)
+
+    return vio_poses
+
 
 def _select_keyframes(poses: List[np.ndarray]) -> List[int]:
     """

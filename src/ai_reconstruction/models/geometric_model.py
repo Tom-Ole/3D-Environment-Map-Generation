@@ -140,9 +140,9 @@ class GeometricModel(ReconstructionModel):
             if len(pts3d) == 0:
                 continue
 
-            # Colour from first image (convert to RGB)
-            img1_rgb = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
-            cols = self._sample_colors(img1_rgb, pts1.T[keep])
+            # Colour from first image — DiskWriter stores RGB bytes, imread
+            # reads them as-is, so img1 already has correct [R,G,B] values.
+            cols = self._sample_colors(img1, pts1.T[keep])
 
             all_pts.append(pts3d.astype(np.float32))
             all_cols.append(cols)

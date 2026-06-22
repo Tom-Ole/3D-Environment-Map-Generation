@@ -20,11 +20,15 @@ import open3d as o3d
 
 logger = logging.getLogger(__name__)
 
-_POISSON_DEPTH = 9
-_DENSITY_PRUNE_PCT = 0.05       # remove the bottom 5 % of density vertices
-_NORMAL_RADIUS = 0.3            # metres for KD-tree normal estimation
-_NORMAL_MAX_NN = 30
-_ORIENT_K = 15                  # neighbours for consistent normal orientation
+_POISSON_DEPTH = 10             # depth 10 → ~5 mm resolution (was 9)
+_POISSON_WIDTH = 0              # 0 = auto
+_POISSON_SCALE = 1.1
+_DENSITY_PRUNE_PCT = 0.03       # remove bottom 3 % (was 5 %) — less aggressive
+_NORMAL_RADIUS = 0.5            # metres for KD-tree normal estimation (was 0.3)
+_NORMAL_MAX_NN = 50             # more neighbours for smoother normals (was 30)
+_ORIENT_K = 20                  # neighbours for consistent normal orientation (was 15)
+_OUTLIER_NB_NEIGHBORS = 20
+_OUTLIER_STD_RATIO = 2.0
 
 
 def fuse_point_clouds(
@@ -79,8 +83,15 @@ def reconstruct_mesh(
     """
     Poisson surface reconstruction on a dense point cloud.
 
+    Steps:
+      1. Statistical outlier removal (reduces noise before meshing).
+      2. Normal estimation with a larger hybrid search radius for smoother
+         normals on typical LiDAR-density clouds.
+      3. Screened Poisson reconstruction at depth 10 (~5 mm resolution).
+      4. Low-density vertex pruning to remove boundary artefacts.
+
     Args:
-        cloud: Fused input cloud (normals estimated here).
+        cloud: Fused input cloud (normals estimated internally).
         depth: Poisson octree depth – higher → finer mesh, slower.
 
     Returns:
@@ -90,7 +101,16 @@ def reconstruct_mesh(
         logger.warning(f"Too few points for meshing ({len(cloud.points)})")
         return None
 
-    # Estimate oriented normals
+    # 1. Statistical outlier removal before normal estimation
+    try:
+        cloud, _ = cloud.remove_statistical_outlier(
+            nb_neighbors=_OUTLIER_NB_NEIGHBORS,
+            std_ratio=_OUTLIER_STD_RATIO,
+        )
+    except Exception as e:
+        logger.warning(f"Statistical outlier removal failed: {e}")
+
+    # 2. Estimate oriented normals
     cloud.estimate_normals(
         search_param=o3d.geometry.KDTreeSearchParamHybrid(
             radius=_NORMAL_RADIUS, max_nn=_NORMAL_MAX_NN
@@ -98,20 +118,26 @@ def reconstruct_mesh(
     )
     cloud.orient_normals_consistent_tangent_plane(k=_ORIENT_K)
 
+    # 3. Poisson reconstruction
     try:
         mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-            cloud, depth=depth
+            cloud,
+            depth=depth,
+            width=_POISSON_WIDTH,
+            scale=_POISSON_SCALE,
+            linear_fit=False,
         )
     except Exception as e:
         logger.error(f"Poisson reconstruction failed: {e}")
         return None
 
-    # Remove low-density artefacts (open boundaries / noise)
+    # 4. Remove low-density artefacts (open boundaries / noise)
     densities_np = np.asarray(densities)
     threshold = np.quantile(densities_np, _DENSITY_PRUNE_PCT)
     vertices_to_remove = (densities_np < threshold).tolist()
     mesh.remove_vertices_by_mask(vertices_to_remove)
     mesh.remove_degenerate_triangles()
+    mesh.remove_duplicated_triangles()
     mesh.remove_unreferenced_vertices()
 
     logger.info(

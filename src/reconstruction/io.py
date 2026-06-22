@@ -93,6 +93,36 @@ def pose_row_to_matrix(row: np.ndarray) -> np.ndarray:
     return T
 
 
+def load_extrinsics_as_matrix(session_path: Path) -> Optional[np.ndarray]:
+    """
+    Load the body→lidar extrinsic from extrinsics.json as a 4×4 SE(3) matrix.
+
+    Returns None if the file is absent or the body_to_lidar key is missing.
+    The returned T maps points from the body frame into the LiDAR frame:
+        p_lidar = T @ p_body_h
+    """
+    ext_path = session_path / "extrinsics.json"
+    if not ext_path.exists():
+        logger.warning("extrinsics.json not found — treating LiDAR ≡ body origin")
+        return None
+    try:
+        with open(ext_path) as f:
+            ext = json.load(f)
+        bl = ext.get("body_to_lidar")
+        if bl is None:
+            logger.warning("body_to_lidar missing from extrinsics.json")
+            return None
+        T = np.eye(4)
+        T[:3, 3] = [float(bl["x"]), float(bl["y"]), float(bl["z"])]
+        T[:3, :3] = Rotation.from_quat(
+            [float(bl["qx"]), float(bl["qy"]), float(bl["qz"]), float(bl["qw"])]
+        ).as_matrix()
+        return T
+    except Exception as e:
+        logger.warning(f"Failed to load extrinsics: {e}")
+        return None
+
+
 def interpolate_spot_pose(timestamp: float, spot_poses: np.ndarray) -> np.ndarray:
     """Return the interpolated 4x4 world pose at the given Unix timestamp."""
     ts = spot_poses[:, 0]
