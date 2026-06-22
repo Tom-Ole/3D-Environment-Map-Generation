@@ -1,0 +1,146 @@
+python main.py 
+2026-06-15 22:35:20,377 [gui.app] INFO: Starting SPOT LiDAR 3D Capture & Reconstruction application
+2026-06-15 22:35:20,377 [gui.app] INFO: Logging to /home/tom/Projects/3D-Environment-Map-Generation/spot_app.log
+2026-06-15 22:35:20,378 [gui.app] INFO: Configuration loaded: hostname=192.168.10.3, output=recordings
+2026-06-15 22:35:20,477 [gui.tabs.capture_tab] INFO: Capture tab UI initialized
+2026-06-15 22:35:20,478 [gui.tabs.reconstruct_tab] INFO: Reconstruct tab UI initialized
+2026-06-15 22:35:20,490 [gui.app] INFO: Main window initialized
+2026-06-15 22:35:24,904 [gui.tabs.ai_reconstruct_tab] INFO: AI session selected: /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903
+2026-06-15 22:35:25,877 [ai_reconstruction.pipeline] INFO: [AI-1/6] load_session 0%  RSS=534MB  Loading session data...
+2026-06-15 22:35:25,888 [recording.session] INFO: Loaded session from /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903
+2026-06-15 22:35:25,889 [ai_reconstruction.image_loader] INFO: Found 542 images from 2 cameras: {'frontleft_fisheye_image', 'frontright_fisheye_image'}
+2026-06-15 22:35:25,889 [ai_reconstruction.pipeline] INFO: [AI-1/6] load_session 100%  RSS=536MB  Loaded 542 images, poses available
+2026-06-15 22:35:25,890 [ai_reconstruction.pipeline] INFO: [AI-2/6] select_keyframes 0%  RSS=536MB  Selecting keyframes...
+2026-06-15 22:35:25,890 [ai_reconstruction.keyframe] INFO: Keyframe selection [interval]: 100 / 542 images
+2026-06-15 22:35:25,890 [ai_reconstruction.pipeline] INFO: [AI-2/6] select_keyframes 100%  RSS=536MB  Selected 100 keyframes from 542 images
+2026-06-15 22:35:25,890 [ai_reconstruction.pipeline] INFO: [AI-3/6] load_model 0%  RSS=536MB  Loading AI model...
+2026-06-15 22:35:25,890 [ai_reconstruction.pipeline] INFO: [AI-3/6] load_model 10%  RSS=536MB  Instantiating model: auto
+2026-06-15 22:35:25,892 [ai_reconstruction.models] INFO: Auto-selected model: mast3r
+2026-06-15 22:35:27,692 [ai_reconstruction.pipeline] INFO: [AI-3/6] load_model 30%  RSS=989MB  Loading weights for mast3r...
+2026-06-15 22:35:27,918 [ai_reconstruction.models.mast3r_model] INFO: Loading MASt3R from [/home/tom/Projects/3D-Environment-Map-Generation/checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth] on cuda
+... loading model from /home/tom/Projects/3D-Environment-Map-Generation/checkpoints/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
+instantiating : AsymmetricMASt3R(enc_depth=24, dec_depth=12, enc_embed_dim=1024, dec_embed_dim=768, enc_num_heads=16, dec_num_heads=12, pos_embed='RoPE100',img_size=(512, 512), head_type='catmlp+dpt', output_mode='pts3d+desc24', depth_mode=('exp', -inf, inf), conf_mode=('exp', 1, inf), patch_embed_cls='PatchEmbedDust3R', two_confs=True, desc_conf_mode=('exp', 0, inf), landscape_only=False)
+<All keys matched successfully>
+2026-06-15 22:35:34,026 [ai_reconstruction.models.mast3r_model] INFO: MASt3R model ready
+2026-06-15 22:35:34,026 [ai_reconstruction.pipeline] INFO: [AI-3/6] load_model 100%  RSS=1821MB  Model ready: mast3r on cuda
+2026-06-15 22:35:34,026 [ai_reconstruction.pipeline] INFO: [AI-4/6] inference 0%  RSS=1821MB  Running model inference...
+/home/tom/Projects/3D-Environment-Map-Generation/mast3r/dust3r/dust3r/cloud_opt/base_opt.py:275: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+2026-06-15 22:35:35,409 [ai_reconstruction.models.base] INFO: [mast3r] 5%  Loading 100 images (size=512)
+2026-06-15 22:35:35,409 [ai_reconstruction.pipeline] INFO: [AI-4/6] inference 5%  RSS=1990MB  Loading 100 images (size=512)
+>> Loading a list of 100 images
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00017_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00022_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00027_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00032_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00037_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00042_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00047_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00052_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00057_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00062_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00067_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00072_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00082_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00087_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00092_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00097_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00102_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00107_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00112_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00117_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00122_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00127_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00132_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00142_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00147_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00152_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00157_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00162_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00167_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00172_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00177_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00182_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00187_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00192_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00202_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00207_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00212_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00217_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00222_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00227_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00232_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00237_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00242_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00247_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00252_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00262_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00267_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00272_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00277_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00282_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00287_frontleft_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00021_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00026_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00031_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00036_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00041_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00051_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00056_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00061_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00066_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00071_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00076_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00081_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00086_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00091_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00096_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00101_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00111_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00116_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00121_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00126_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00131_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00136_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00141_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00146_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00151_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00156_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00161_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00171_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00176_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00181_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00186_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00191_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00196_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00201_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00206_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00211_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00216_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00221_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00231_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00236_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00241_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00246_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00251_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00256_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00261_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00266_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00271_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00276_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ - adding /home/tom/Projects/3D-Environment-Map-Generation/recordings/notebook/20260610_153903/images/00281_frontright_fisheye_image.png with resolution 480x640 --> 384x512
+ (Found 100 images)
+2026-06-15 22:35:36,219 [ai_reconstruction.models.mast3r_model] INFO: Pair graph: a complete graph for 100 images (9900 pairs) would exceed the ~8 GB memory budget; using sliding window 'swin-6' instead. Raise 'Max pair memory' to allow a denser graph.
+2026-06-15 22:35:36,219 [ai_reconstruction.models.base] INFO: [mast3r] 15%  Building image pairs (graph=swin-6)
+2026-06-15 22:35:36,219 [ai_reconstruction.pipeline] INFO: [AI-4/6] inference 15%  RSS=2008MB  Building image pairs (graph=swin-6)
+2026-06-15 22:35:36,220 [ai_reconstruction.models.base] INFO: [mast3r] 20%  Running MASt3R inference on 1200 pairs
+2026-06-15 22:35:36,221 [ai_reconstruction.pipeline] INFO: [AI-4/6] inference 20%  RSS=2008MB  Running MASt3R inference on 1200 pairs
+>> Inference with model on 1200 image pairs
+  0%|                                                                                         | 0/1200 [00:00<?, ?it/s]/home/tom/Projects/3D-Environment-Map-Generation/mast3r/dust3r/dust3r/inference.py:44: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=bool(use_amp)):
+/home/tom/Projects/3D-Environment-Map-Generation/mast3r/dust3r/dust3r/model.py:206: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=False):
+/home/tom/Projects/3D-Environment-Map-Generation/mast3r/dust3r/dust3r/inference.py:48: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast(enabled=False):
+100%|██████████████████████████████████████████████████████████████████████████████| 1200/1200 [02:24<00:00,  8.31it/s]
+Killed

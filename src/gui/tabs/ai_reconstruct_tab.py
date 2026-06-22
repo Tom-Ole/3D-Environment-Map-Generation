@@ -1,6 +1,8 @@
 """AI Reconstruction tab — camera-based 3D reconstruction via AI models."""
 
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -67,6 +69,8 @@ class AIReconstructTab(QWidget):
         self._worker: Optional[AIReconstructWorker] = None
         self._selected_session: Optional[Path] = None
         self._source_checkboxes: List[QCheckBox] = []
+        # Best output to open in the standalone viewer once a run completes.
+        self._last_output: Optional[Path] = None
 
         self._build_ui()
         self._check_model_availability()
@@ -212,6 +216,12 @@ class AIReconstructTab(QWidget):
         self._stop_btn.clicked.connect(self._on_stop)
         self._stop_btn.setEnabled(False)
         btn_row.addWidget(self._stop_btn)
+
+        self._view_btn = QPushButton("View Mesh")
+        self._view_btn.setMinimumHeight(30)
+        self._view_btn.clicked.connect(self.on_view_results)
+        self._view_btn.setEnabled(False)
+        btn_row.addWidget(self._view_btn)
         ctrl_layout.addLayout(btn_row)
 
         # Stage label + overall progress bar
@@ -329,6 +339,8 @@ class AIReconstructTab(QWidget):
 
         self._run_btn.setEnabled(False)
         self._stop_btn.setEnabled(True)
+        self._view_btn.setEnabled(False)
+        self._last_output = None
         self._overall_bar.setValue(0)
         self._stage_bar.setValue(0)
         self._stage_label.setText("Stage: starting…")
@@ -377,6 +389,7 @@ class AIReconstructTab(QWidget):
         device = stats.get("device_used", "?")
         dur = stats.get("duration_seconds", 0.0)
         pcd_path = stats.get("point_cloud_path", "")
+        mesh_path = stats.get("mesh_path", "")
 
         self._overall_bar.setValue(100)
         self._stage_bar.setValue(100)
@@ -387,8 +400,14 @@ class AIReconstructTab(QWidget):
             f"  Model   : {model}\n"
             f"  Device  : {device}\n"
             f"  Time    : {dur:.1f} s\n"
-            + (f"  Output  : {pcd_path}\n" if pcd_path else "")
+            + (f"  Cloud   : {pcd_path}\n" if pcd_path else "")
+            + (f"  Mesh    : {mesh_path}\n" if mesh_path else "")
         )
+        # Prefer the mesh, fall back to the point cloud, for the viewer.
+        self._last_output = Path(mesh_path) if mesh_path else (
+            Path(pcd_path) if pcd_path else None
+        )
+        self._view_btn.setEnabled(self._last_output is not None)
         self._run_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
 
@@ -399,6 +418,31 @@ class AIReconstructTab(QWidget):
         self._stage_label.setText("Error")
         self._run_btn.setEnabled(True)
         self._stop_btn.setEnabled(False)
+
+    @Slot()
+    def on_view_results(self) -> None:
+        """Open the latest AI reconstruction output in the Open3D viewer."""
+        target = self._last_output
+        if target is None or not target.exists():
+            self._append_log("\nNo output file found to visualize.")
+            return
+
+        self._append_log(f"\nOpening viewer for: {target.name}")
+        try:
+            subprocess.Popen(
+                [sys.executable, "-c",
+                 f"import open3d as o3d; "
+                 f"g = o3d.io.read_triangle_mesh(r'{target}') "
+                 f"if r'{target}'.endswith(('.ply','.obj')) else "
+                 f"o3d.io.read_point_cloud(r'{target}'); "
+                 f"g.compute_vertex_normals() if hasattr(g, 'triangles') and "
+                 f"len(g.triangles) else None; "
+                 f"o3d.visualization.draw_geometries([g], "
+                 f"window_name='{target.name}', width=1280, height=720)"],
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+            )
+        except Exception as exc:
+            self._append_log(f"Could not open viewer: {exc}")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -458,6 +502,7 @@ OUTPUTS
 Results are saved in:
   <session>/ai_reconstruction/
     point_cloud.ply    — coloured point cloud
+    mesh.ply           — Poisson surface mesh
     camera_poses.npy   — Mx4x4 camera-to-world matrices
     metadata.json      — run statistics and configuration
 

@@ -60,6 +60,17 @@ def export_results(
         _save_point_cloud(result.points, result.colors, pcd_path)
         final.point_cloud_path = pcd_path
 
+    # ── Surface mesh (Poisson) ────────────────────────────────────────────────
+    if config.mesh_enabled and result.points is not None and len(result.points) >= 100:
+        mesh_path = out_dir / "mesh.ply"
+        if _save_mesh_poisson(
+            result.points, result.colors, mesh_path,
+            depth=config.poisson_depth,
+            density_quantile=config.mesh_density_quantile,
+            normal_radius=config.normal_radius,
+        ) is not None:
+            final.mesh_path = mesh_path
+
     # ── Camera poses ──────────────────────────────────────────────────────────
     if result.camera_poses is not None and len(result.camera_poses) > 0:
         poses_path = out_dir / "camera_poses.npy"
@@ -72,6 +83,7 @@ def export_results(
         "model": result.model_name,
         "metric_scale": result.metric_scale,
         "point_count": final.point_count,
+        "mesh_exported": final.mesh_path is not None,
         "keyframe_count": keyframe_count,
         "image_count": final.image_count,
         "device": config.device.value,
@@ -99,6 +111,60 @@ def export_results(
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
+
+def _save_mesh_poisson(
+    points: np.ndarray,
+    colors: Optional[np.ndarray],
+    path: Path,
+    depth: int = 10,
+    density_quantile: float = 0.02,
+    normal_radius: float = 0.1,
+) -> Optional[Path]:
+    """Build a surface mesh via Poisson reconstruction and save it.
+
+    Poisson needs oriented normals, so we estimate and consistently orient them
+    first. It produces a watertight surface that extends beyond the observed
+    samples, so we trim the lowest-density (least-supported) vertices to drop
+    hallucinated geometry. normal_radius assumes metric-scale points (metres).
+
+    Returns the path on success, or None if meshing was skipped/failed.
+    """
+    try:
+        import open3d as o3d
+    except ImportError:
+        logger.warning("Open3D not available — skipping mesh export")
+        return None
+
+    try:
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
+        if colors is not None and len(colors) == len(points):
+            pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64) / 255.0)
+
+        pcd.estimate_normals(
+            search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=normal_radius, max_nn=30)
+        )
+        pcd.orient_normals_consistent_tangent_plane(k=30)
+
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+            pcd, depth=depth
+        )
+        densities = np.asarray(densities)
+        if density_quantile > 0 and len(densities) > 0:
+            thr = np.quantile(densities, density_quantile)
+            mesh.remove_vertices_by_mask(densities < thr)
+
+        mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh(str(path), mesh)
+        logger.info(
+            f"Saved Poisson mesh ({len(mesh.vertices)} verts, "
+            f"{len(mesh.triangles)} tris) -> {path}"
+        )
+        return path
+    except Exception as e:
+        logger.warning(f"Poisson meshing failed: {e}")
+        return None
+
 
 def _save_point_cloud(
     points: np.ndarray,

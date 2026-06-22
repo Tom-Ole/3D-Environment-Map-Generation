@@ -60,6 +60,12 @@ class AIReconstructionConfig:
     min_depth: float = 0.1             # z-filter lower bound (m)
     max_depth: float = 50.0            # z-filter upper bound (m)
 
+    # Meshing (Poisson surface reconstruction)
+    mesh_enabled: bool = True          # build a surface mesh from the cloud
+    poisson_depth: int = 10            # octree depth; higher = finer + slower
+    mesh_density_quantile: float = 0.02  # trim this fraction of lowest-density verts
+    normal_radius: float = 0.1         # normal-estimation radius (m, metric scale)
+
 
 @dataclass
 class ImageRecord:
@@ -110,6 +116,7 @@ class AIReconstructionResult:
     """Final output returned by AIReconstructionPipeline.run()."""
 
     point_cloud_path: Optional[Path] = None
+    mesh_path: Optional[Path] = None
     camera_poses_path: Optional[Path] = None
     metadata_path: Optional[Path] = None
     point_count: int = 0

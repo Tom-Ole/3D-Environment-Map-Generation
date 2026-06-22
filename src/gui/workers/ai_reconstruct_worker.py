@@ -99,6 +99,8 @@ class AIReconstructWorker(QThread):
                     "duration_seconds": result.duration_seconds,
                     "point_cloud_path": str(result.point_cloud_path)
                     if result.point_cloud_path else "",
+                    "mesh_path": str(result.mesh_path)
+                    if result.mesh_path else "",
                 })
             else:
                 self.error.emit(result.error_message or "AI reconstruction failed")
